@@ -11,55 +11,7 @@
 /* ************************************************************************** */
 
 #include "stub.h"
-#include "famine.h"
-
-/**
- * @brief validates the ELF magic bytes at the start of file (0x7f)
- */
-int check_mem(Elf64_Ehdr *elf)
-{
-	if (memcmp(elf->e_ident, ELFMAG, SELFMAG) != 0)
-		return (printf("Error: Not an ELF file\n"), 1);
-	return (0);
-}
-
-/**
- * @brief Check for 64-bit
- * e_ident[EI_CLASS] is ELFCLASS32 (1) or ELFCLASS64 (2).
- */
-int check_64bit(Elf64_Ehdr *elf) {
-	if (elf->e_ident[EI_CLASS] != ELFCLASS64)
-		return (printf("Error: Not a 64-bit ELF\n"), 1);
-	return (0);
-}
-
-/**
- * @brief validates architecture.
- * EM_X86_64 = 62
- */
-int check_8664(Elf64_Ehdr *elf) {
-	if (elf->e_machine != EM_X86_64)
-		return (printf("File architecture not supported. x86_64 only\n"), 1);
-	return (0);
-}
-
-/**
- * @brief Checks that file is executable or shared library.
- */
-int check_exec(Elf64_Ehdr *elf) {
-	if (elf->e_type != ET_EXEC && elf->e_type != ET_DYN)
-		return (printf("Error: Nt an executable\n"), 1);
-	return (0);
-}
-
-int check_elf(Elf64_Ehdr *elf) {
-	int ret = 0;
-	ret += check_mem(elf);
-	ret += check_64bit(elf);
-	ret += check_8664(elf);
-	ret += check_exec(elf);
-	return (ret);
-}
+#include "../include/famine.h"
 
 /*
 * Turn the PT_NOTE segment into a PT_LOAD segment that maps our stub,
