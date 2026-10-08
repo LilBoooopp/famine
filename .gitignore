@@ -49,6 +49,8 @@ imgui
 vgcore.*
 .asm-lsp.toml
 
+.counter
+
 stub.bin
 stub.h
 famine
