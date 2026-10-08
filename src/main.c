@@ -10,38 +10,8 @@
 /*                                                                            */
 /* ************************************************************************** */
 
-#ifndef _GNU_SOURCE
-# define _GNU_SOURCE
-#endif
 #include "stub.h"
-#include <elf.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-/*
- * Elf64_Ehdr (file header)
- *	e_ident[16]	magic + class(32/64) + endianness + OS ABI
- * 	e_type		ET_EXEC (non-PIE) / ET_DYN (PIE or shared object)
- * 	e_machine	target ISA (EM_X86_64)
- * 	e_entry		virtual address of entry point (_start)
- * 	e_phoff		file offset of the program header table
- * 	e_phentsize	size of one program header entry
- * 	e_phnum		number of program header entries
- *
- * Elf64_Phdr (program header /segment)
- *	p_type	PT_LOAD, PT, NOT, PT_PHDR, ...
- *	p_flags	PF_R | PF_W | PF_X
- *	p_offset	file offset of the segment's data
- *	p_vaddr		virtual address the segment is loaded at
- *	p_filesz	size of the segment in the file
- *	p_memsz		size of the segment in memory (>= p_filesz)
- *	p_align		alighment: p_vaddr must be congruent to p_offset mod p_align
- */
+#include "famine.h"
 
 /**
  * @brief validates the ELF magic bytes at the start of file (0x7f)
@@ -131,64 +101,5 @@ void inject_stub(void *woody, Elf64_Phdr *note_segment, Elf64_Ehdr *ehdr, size_t
 int main(int argc, char **argv) {
 	if (argc != 2)
   		return (1);
-
-	int fd = open(argv[1], O_RDONLY);
-	if (fd < 0)
-		return (printf("Error: could not open file\n"), 1);
-
-	struct stat st;
-	if (fstat(fd, &st) < 0)
-		return (printf("Error: fstat failed\n"), close(fd), 1);
-	if (st.st_size < (off_t)sizeof(Elf64_Ehdr))
-		return (printf("Error: file too small\n"), close(fd), 1);
-
-	void *map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (map == MAP_FAILED)
-		return (printf("Error: mmap failed\n"), close(fd), 1);
-
-	if (check_elf((Elf64_Ehdr *) map)) {
-		munmap(map, st.st_size);
-		close(fd);
-		return (1);
-	}
-
-	size_t page_size = 0x1000;
-	size_t stub_offset = (st.st_size + page_size - 1) & ~(page_size - 1);
-	size_t output_size = stub_offset + stub_bin_len;
-
-	void *woody = malloc(output_size);
-	if (!woody)
-		return (munmap(map, st.st_size), close(fd), 1);
-	memset(woody, 0, output_size);
-	memcpy(woody, map, st.st_size);
-	munmap(map, st.st_size);
-	close(fd);
-
-	Elf64_Ehdr *ehdr = (Elf64_Ehdr *)woody;
-	Elf64_Phdr *phdr = (Elf64_Phdr *)(woody + ehdr->e_phoff);
-
-	// finding .note and PT_PHDR (for load_base computation in stub)
-	Elf64_Phdr *note_segment = NULL;
-	uint64_t phdr_link_vaddr = ehdr->e_phoff;  // fallback: works for PIE
-	for (int i = 0; i < ehdr->e_phnum; i++) {
-		if (phdr[i].p_type == PT_NOTE && !note_segment)
-			note_segment = &phdr[i];
-		if (phdr[i].p_type == PT_PHDR)
-			phdr_link_vaddr = phdr[i].p_vaddr;
-	}
-	if (!note_segment)
-		return (printf("Error: PT_NOTE segment not found\n"), free(woody), 1);
-	
-	inject_stub(woody, note_segment, ehdr, stub_offset, phdr_link_vaddr);
-	
-	// write to disk
-	int fd_output = open("woody", O_WRONLY | O_CREAT | O_TRUNC, 0755);
-	if (fd_output < 0)
-		return (printf("Error: Woody open() failed"), free(woody), 1);
-	if (write(fd_output, woody, output_size) < 0)
-		return (printf("Error: write() failed"), free(woody), close(fd_output), 1);
-	close(fd_output);
-	
-	free(woody);
-	return (0);
+	return (infect_file(argv[1], "woody"));
 }
