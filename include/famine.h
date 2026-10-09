@@ -70,6 +70,6 @@ uint64_t	highest_vaddr_end(const t_famine *f);
 
 void		inject_stub(t_famine *f);
 
-int			infect_file(const char *in_path, const char *out_path);
+int			infect_file(const char *path);
 
 #endif

