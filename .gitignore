@@ -54,3 +54,4 @@ vgcore.*
 stub.bin
 stub.h
 famine
+/Famine

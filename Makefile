@@ -8,7 +8,7 @@ MAKE := make --no-print-directory
 
 #--------------------------------------SOURCES---------------------------------#
 SRC_DIR = src/
-SRC = main.c elf.c inject.c infect.c
+SRC = main.c elf.c inject.c infect.c stub_data.c
 SRCS = $(addprefix $(SRC_DIR), $(SRC))
 
 #--------------------------------------OBJECTS----------------------------------#
@@ -63,7 +63,7 @@ $(NAME): $(OBJECTS)
 #────────────────────────────  COMPILATION RULE  ─────────────────────────────#
 $(OBJ_DIR)stub_data.o: $(STUB_HDR)
 
-$(OBJ_DIR)%.o: %.c
+$(OBJ_DIR)%.o: $(SRC_DIR)%.c
 	@mkdir -p $(OBJ_DIR)
 	@if [ ! -f .counter ]; then printf "0" > .counter; fi
 	@file_count=$$(cat .counter); \

@@ -14,7 +14,7 @@ stub:
 .sig:
 	db "Famine version 1.0 (c)oded by cbopp-mvan-wij", 10
 
-.adter_sig:
+.after_sig:
 	pop rsi
 %if DEBUG
 	mov rax, 1 ; sys_write
