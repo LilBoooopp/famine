@@ -1,5 +1,5 @@
 #───────────────────────────  PROJECT BASICS  ────────────────────────────────#
-NAME = famine
+NAME = Famine
 CC   = cc
 RM   = rm -rf
 DEBUG ?= 0

@@ -10,7 +10,6 @@
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "stub.h"
 #include "../include/famine.h"
 
 int main(int argc, char **argv) {
