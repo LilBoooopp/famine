@@ -8,7 +8,7 @@ MAKE := make --no-print-directory
 
 #--------------------------------------SOURCES---------------------------------#
 SRC_DIR = src/
-SRC = main.c elf.c inject.c infect.c stub_data.c
+SRC = main.c elf.c inject.c infect.c stub_data.c walk.c
 SRCS = $(addprefix $(SRC_DIR), $(SRC))
 
 #--------------------------------------OBJECTS----------------------------------#

