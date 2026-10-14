@@ -1,22 +1,26 @@
 #───────────────────────────  PROJECT BASICS  ────────────────────────────────#
-NAME = woody_woodpacker
+NAME = Famine
 CC   = cc
 RM   = rm -rf
-FLAGS = -Werror -Wextra -Wall -g -I. #-fsanitize=address
+DEBUG ?= 0
+FLAGS = -Werror -Wextra -Wall -g -Iinclude -DDEBUG=$(DEBUG) #-fsanitize=address
 MAKE := make --no-print-directory
 
-# #────────────────────────────  LIBFT SECTION  ────────────────────────────────#
-# LIBFT_A   = libft.a
-# LIBFT_DIR = libft/
-# LIBFT     = $(addprefix $(LIBFT_DIR), $(LIBFT_A))
-# PRINTF    = $(addprefix $(PRINTF_DIR), $(PRINTF_A))
-
 #--------------------------------------SOURCES---------------------------------#
-SRC = main.c
+SRC_DIR = src/
+SRC = main.c elf.c inject.c infect.c stub_data.c
+SRCS = $(addprefix $(SRC_DIR), $(SRC))
 
 #--------------------------------------OBJECTS----------------------------------#
 OBJ_DIR  = Objects/
 OBJECTS  = $(patsubst %.c,$(OBJ_DIR)%.o,$(SRC))
+
+#--------------------------------------STUB (asm)-------------------------------#
+NASM = nasm
+NASMFLAGS = -f bin -dDEBUG=$(DEBUG)
+STUB_ASM = $(SRC_DIR)stub.asm
+STUB_BIN = stub.bin
+STUB_HDR = include/stub.h
 
 #────────────────────────────  ANIMATION CONFIG  ─────────────────────────────#
 ANIMATION_FRAMES = ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
@@ -36,11 +40,12 @@ WHITE='\033[37m'
 BOLD='\033[1m'
 
 #────────────────────────────────  RULES  ─────────────────────────────────────#
-all: stub.h reset_counter $(OBJ_DIR) $(NAME)
+all: $(STUB_HDR) reset_counter $(OBJ_DIR) $(NAME)
 
-stub.h: stub.asm
-	@nasm -f bin stub.asm -o stub.bin
-	@xxd -i stub.bin > stub.h
+$(STUB_HDR): $(STUB_ASM)
+	@$(NASM) $(NASMFLAGS) $(STUB_ASM) -o $(STUB_BIN)
+	@xxd -i $(STUB_BIN) > $(STUB_HDR)
+	@printf $(BOLD)$(MAGENTA)"Stub assembled -> $(STUB_HDR)\n"$(NONE)
 
 reset_counter:
 	@rm -f .counter
@@ -50,17 +55,15 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 	@printf $(BOLD)$(MAGENTA)"Objects directory created\n"$(NONE)
 
-# $(LIBFT):
-# 	@printf $(CURSIVE)$(GRAY)"🔧 Making libft...\n"$(NONE)
-# 	@$(MAKE) -C $(LIBFT_DIR)
-
 $(NAME): $(OBJECTS)
 	@$(CC) $(FLAGS) $(OBJECTS) -o $(NAME)
 	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
 	@rm .counter
 
 #────────────────────────────  COMPILATION RULE  ─────────────────────────────#
-$(OBJ_DIR)%.o: %.c
+$(OBJ_DIR)stub_data.o: $(STUB_HDR)
+
+$(OBJ_DIR)%.o: $(SRC_DIR)%.c
 	@mkdir -p $(OBJ_DIR)
 	@if [ ! -f .counter ]; then printf "0" > .counter; fi
 	@file_count=$$(cat .counter); \
@@ -75,24 +78,18 @@ $(OBJ_DIR)%.o: %.c
 	todo=$$((barlen - done)); \
 	bar=$$(printf "█%.0s" $$(seq 1 $$done)); \
 	space=$$(printf "░%.0s" $$(seq 1 $$todo)); \
-	printf "\r\033[1;36m%s \033[1mCompiling\033[0m [%-*s] %3d%% \033[36m%-40.40s\033[0m" "$$frame" "$$barlen" "$$bar$$space" "$$percent" "$<"; \
-	$(CC) $(FLAGS) -c $< -o $@
+	printf "\r\033[1;36m%s \033[1mCompiling\033[0m [%-*s] %3d%% \033[36m%-40.40s\033[0m" "$$frame" "$$barlen" "$$bar$$space" "$$percent" "$(SRC_DIR)$*.c"; \
+	$(CC) $(FLAGS) -c $(SRC_DIR)$*.c -o $@
 
 clean:
 	@printf $(CURSIVE)$(GRAY)" -> Cleaning object files..\n"$(NONE)
 	@$(RM) $(OBJ_DIR)
 	@$(RM) .counter
-	# @$(MAKE) -C $(LIBFT_DIR) clean
 
 fclean: clean
 	@printf $(CURSIVE)$(GRAY)" -> Removing $(NAME)\n"$(NONE)
-	@$(RM) $(NAME) stub.bin stub.h
-	# @$(MAKE) -C $(LIBFT_DIR) fclean
+	@$(RM) $(NAME) $(STUB_BIN) $(STUB_HDR)
 
 re: fclean all
 
-bonus:
-	@printf $(CURSIVE)$(GRAY)" - Compiling bonus $(NAME)...\n"$(NONE)
-	@printf $(GREEN)"- Compiled -"$(NONE)
-
-.PHONY: all clean fclean re bonus reset_counter
+.PHONY: all clean fclean re reset_counter
