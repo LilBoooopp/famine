@@ -68,7 +68,7 @@ typedef struct s_famine
 }	t_famine;
 
 // elf.c
-int			is_valid_elf(const Elf64_Ehdr *elf);
+int			is_valid_elf(const Elf64_Ehdr *elf, off_t size);
 int			find_segments(t_famine *f);
 uint64_t	highest_vaddr_end(const t_famine *f);
 
