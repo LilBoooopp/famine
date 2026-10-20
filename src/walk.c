@@ -1,5 +1,4 @@
 #include "../include/famine.h"
-#include <linux/limits.h>
 
 static int is_regular(const char *path, const struct dirent *ent)
 {
