@@ -428,26 +428,37 @@ else
 	         --log-file="$VGLOG" \
 	         "$FAMINE" >/dev/null 2>&1
 
-	def=$(awk '/definitely lost:/ { n=$4; gsub(/,/,"",n); print n+0; exit }' "$VGLOG"); def=${def:-0}
-	ind=$(awk '/indirectly lost:/ { n=$4; gsub(/,/,"",n); print n+0; exit }' "$VGLOG"); ind=${ind:-0}
-	errs=$(awk '/ERROR SUMMARY:/  { print $4+0; exit }' "$VGLOG"); errs=${errs:-0}
-	fds=$(awk '/FILE DESCRIPTORS:/ { print $4+0; exit }' "$VGLOG")
+	# valgrind prints "ERROR SUMMARY:" only when it ran the program to
+	# completion. If it bailed at startup (e.g. it can't set up ld.so
+	# redirections because glibc/ld.so debug symbols are missing) there is no
+	# summary — and the figures below would default to 0 and FALSE-PASS. So
+	# gate every valgrind assertion on proof that valgrind actually ran.
+	if ! grep -q "ERROR SUMMARY:" "$VGLOG"; then
+		reason=$(grep -m1 -i 'cannot continue\|cannot be set up\|not found whilst' "$VGLOG" \
+		         | sed 's/^valgrind:[[:space:]]*//')
+		skip "valgrind leak/error check" "valgrind did not run — ${reason:-see $VGLOG}"
+	else
+		def=$(awk '/definitely lost:/ { n=$4; gsub(/,/,"",n); print n+0; exit }' "$VGLOG"); def=${def:-0}
+		ind=$(awk '/indirectly lost:/ { n=$4; gsub(/,/,"",n); print n+0; exit }' "$VGLOG"); ind=${ind:-0}
+		errs=$(awk '/ERROR SUMMARY:/  { print $4+0; exit }' "$VGLOG"); errs=${errs:-0}
+		fds=$(awk '/FILE DESCRIPTORS:/ { print $4+0; exit }' "$VGLOG")
 
-	if [ "$def" -eq 0 ] && [ "$ind" -eq 0 ]; then
-		pass "no memory leaked (definite + indirect = 0 bytes)"
-	else fail "leak: $def bytes definite + $ind bytes indirect lost — see $VGLOG"; fi
+		if [ "$def" -eq 0 ] && [ "$ind" -eq 0 ]; then
+			pass "no memory leaked (definite + indirect = 0 bytes)"
+		else fail "leak: $def bytes definite + $ind bytes indirect lost — see $VGLOG"; fi
 
-	if [ "$errs" -eq 0 ]; then pass "no memory errors on valid input (ERROR SUMMARY: 0)"
-	else fail "$errs valgrind error(s) on valid input — see $VGLOG"; fi
+		if [ "$errs" -eq 0 ]; then pass "no memory errors on valid input (ERROR SUMMARY: 0)"
+		else fail "$errs valgrind error(s) on valid input — see $VGLOG"; fi
 
-	if [ -n "$fds" ]; then
-		if [ "$fds" -le 3 ]; then pass "no leaked file descriptors ($fds open at exit)"
-		else fail "$fds fds open at exit (expected 3: stdin/out/err) — see $VGLOG"; fi
+		if [ -n "$fds" ]; then
+			if [ "$fds" -le 3 ]; then pass "no leaked file descriptors ($fds open at exit)"
+			else fail "$fds fds open at exit (expected 3: stdin/out/err) — see $VGLOG"; fi
+		fi
+
+		# guard against a false clean: confirm it actually infected under valgrind
+		if [ "$(sigcount "$T1/vg_pie")" = "1" ]; then pass "infection confirmed under valgrind"
+		else fail "valgrind ran but vg_pie wasn't infected — investigate"; fi
 	fi
-
-	# guard against a false clean: confirm it actually infected under valgrind
-	if [ "$(sigcount "$T1/vg_pie")" = "1" ]; then pass "infection still works under valgrind"
-	else fail "clean valgrind but no infection — the run did nothing"; fi
 fi
 
 # ---------------------------------------------------------------------------
