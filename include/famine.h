@@ -16,7 +16,6 @@
 # include <unistd.h>
 # include <limits.h>
 
-
 # if DEBUG
 #  include <stdio.h>
 #  define LOG(...) fprintf(stderr, __VA_ARGS__)
