@@ -20,6 +20,7 @@ set -u
 FAMINE="${FAMINE:-./Famine}"
 T1="/tmp/test"
 T2="/tmp/test2"
+T3="/tmp/test3"                   # a sibling dir that is NOT a target
 WORK="/tmp/famine_test_work"      # baselines + fixtures scratch
 SIG="cbopp-mvan-wij"              # distinctive slice of the stub signature
 CANARY="/tmp/famine_canary"       # lives OUTSIDE the target dirs
@@ -57,13 +58,15 @@ fi
 if [ -x "$FAMINE" ]; then pass "Famine binary present"; else
 	fail "Famine binary missing — build failed"; printf "\nAborting.\n"; exit 1
 fi
+if [ "$(basename "$FAMINE")" = "Famine" ]; then pass "executable is named 'Famine'"
+else fail "executable must be named 'Famine' (got '$(basename "$FAMINE")')"; fi
 
 # ---------------------------------------------------------------------------
 #  1. fixtures
 # ---------------------------------------------------------------------------
 section "Fixtures"
-rm -rf "$T1" "$T2" "$WORK" "$CANARY"
-mkdir -p "$T1" "$T2" "$WORK"
+rm -rf "$T1" "$T2" "$T3" "$WORK" "$CANARY"
+mkdir -p "$T1" "$T2" "$T3" "$WORK"
 
 cat > "$WORK/sample.c" <<'EOF'
 #include <stdio.h>
@@ -101,11 +104,18 @@ head -c 8  "$T2/ls"                  > "$T1/tiny.elf"        # smaller than Elf6
 # canary OUTSIDE the target dirs — containment check
 cp "$(command -v ls)" "$CANARY"
 
+# a sibling dir that is NOT a target, plus a symlink from a target dir pointing
+# into it: the walker must ignore the sibling entirely and must NOT follow the
+# symlink to infect the binary it points at.
+cp "$(command -v ls)" "$T3/outsider"
+ln -sf "$T3/outsider" "$T1/escape_link"
+
 # ---------------------------------------------------------------------------
 #  2. baselines (capture BEFORE any infection)
 # ---------------------------------------------------------------------------
 for f in "$T1/sample_pie" "$T1/sample_nopie" "$T2/ls" "$T1/sample_32" \
-         "$T1/script.sh" "$T1/truncated.elf" "$T1/tiny.elf" "$T1/empty.elf" "$CANARY"; do
+         "$T1/script.sh" "$T1/truncated.elf" "$T1/tiny.elf" "$T1/empty.elf" \
+         "$CANARY" "$T3/outsider"; do
 	[ -e "$f" ] && BASE_MD5["$f"]=$(md5 "$f")
 done
 BASE_MODE_PIE=$(mode "$T1/sample_pie")
@@ -120,12 +130,16 @@ LS_BEFORE=$("$T2/ls" "$WORK/probe")
 #  3. RUN #1  — real run, malformed files present in the folders
 # ---------------------------------------------------------------------------
 section "Silence (run #1, with malformed inputs present)"
+NAMES_BEFORE=$(ls -1a "$T1" "$T2" 2>/dev/null | sort)   # low-profile: name set must not change
 "$FAMINE" >"$WORK/out1" 2>"$WORK/err1"; RC1=$?
 
 eq  "exit status 0 (no crash)" "0" "$RC1"
 [ $RC1 -ge 128 ] && fail "killed by signal $((RC1-128)) — a malformed file faulted the walker"
 eq  "stdout empty"            "0" "$(wc -c < "$WORK/out1" | tr -d ' ')"
 eq  "stderr empty"            "0" "$(wc -c < "$WORK/err1" | tr -d ' ')"
+if [ "$NAMES_BEFORE" = "$(ls -1a "$T1" "$T2" 2>/dev/null | sort)" ]; then
+	pass "no stray files created in target dirs (modifies in place only)"
+else fail "Famine added or removed files in the target dirs — not low-profile"; fi
 
 # ---------------------------------------------------------------------------
 #  4. infection correctness
@@ -172,6 +186,10 @@ else skip "32-bit ELF rejection" "no -m32 multilib"; fi
 
 section "Containment"
 assert_untouched "file outside /tmp/test* untouched" "$CANARY"
+assert_untouched "sibling dir /tmp/test3 untouched"  "$T3/outsider"
+if [ "$(sigcount "$T3/outsider")" = "0" ]; then
+	pass "symlink in a target dir not followed (binary outside stays clean)"
+else fail "symlink followed — infected a binary outside the target dirs"; fi
 
 # ---------------------------------------------------------------------------
 #  6. RUN #2 — idempotency / the dedup guard
@@ -350,6 +368,86 @@ else
 			skip "second-generation propagation" "generation 1 didn't propagate"
 		fi
 	fi
+fi
+
+# ---------------------------------------------------------------------------
+# 10. robustness — must never crash and never speak, even on bad input
+#     ("no output ... even in case of a crash"), including the offset/size
+#     bounds-checking from the README hardening TODO.
+# ---------------------------------------------------------------------------
+section "Robustness (never crash, never speak)"
+
+# A. a missing target dir must not fault the walker
+rm -rf "$T1"
+"$FAMINE" >"$WORK/outr" 2>"$WORK/errr"; RCR=$?
+eq "missing target dir: exit 0" "0" "$RCR"
+[ "$RCR" -ge 128 ] && fail "crashed on missing target dir (signal $((RCR-128)))"
+eq "missing target dir: silent" "0" "$(( $(wc -c < "$WORK/outr") + $(wc -c < "$WORK/errr") ))"
+mkdir -p "$T1"
+
+# B. a valid-looking ELF with a bogus e_phnum must not fault the parser.
+#    Maps to the README hardening TODO; expect RED until offsets are range-checked.
+if [ "$HAVE_SAMPLES" = 1 ]; then
+	cc "$WORK/sample.c" -o "$T2/badhdr" >/dev/null 2>&1
+	printf '\377\377' | dd of="$T2/badhdr" bs=1 seek=56 count=2 conv=notrunc >/dev/null 2>&1
+	"$FAMINE" >"$WORK/outb" 2>"$WORK/errb"; RCB=$?
+	if [ "$RCB" -ge 128 ]; then fail "crashed on bogus e_phnum (signal $((RCB-128))) — needs offset/size bounds checks"
+	else pass "survived bogus e_phnum without crashing"; fi
+	eq "bogus-header run silent" "0" "$(( $(wc -c < "$WORK/outb") + $(wc -c < "$WORK/errb") ))"
+else
+	skip "malformed-header robustness" "no compiler fixtures"
+fi
+
+# ---------------------------------------------------------------------------
+# 11. memory management — valgrind over a CLEAN, valid fixture set.
+#     Measured on the normal path (happy path + the post-mmap reject path),
+#     so the known e_phnum OOB (section 10) doesn't pollute the report.
+#     Covers leaks, invalid read/write, double-free/UAF (ERROR SUMMARY) and
+#     leaked file descriptors.
+# ---------------------------------------------------------------------------
+section "Memory management (valgrind)"
+if ! command -v valgrind >/dev/null 2>&1; then
+	skip "valgrind leak/error check" "valgrind not installed (apt-get install valgrind)"
+elif [ "$HAVE_SAMPLES" != 1 ]; then
+	skip "valgrind leak/error check" "no compiler fixtures"
+else
+	# clean fixtures: valid binaries (happy path) + a non-ELF and, if available,
+	# a 32-bit ELF — both rejected AFTER mmap, exercising the munmap cleanup path.
+	rm -rf "$T1" "$T2"; mkdir -p "$T1" "$T2"
+	cc "$WORK/sample.c"         -o "$T1/vg_pie"   >/dev/null 2>&1
+	cc -no-pie "$WORK/sample.c" -o "$T1/vg_nopie" >/dev/null 2>&1
+	cp "$(command -v ls)"  "$T2/vg_ls"
+	cp "$(command -v cat)" "$T2/vg_cat" 2>/dev/null
+	dd if=/dev/zero of="$T1/vg_notelf" bs=256 count=1 >/dev/null 2>&1   # >64B, not an ELF
+	[ "$HAVE_32" = 1 ] && cc -m32 "$WORK/sample.c" -o "$T1/vg_32" >/dev/null 2>&1
+
+	VGLOG="$WORK/valgrind.log"
+	valgrind --leak-check=full --show-leak-kinds=all \
+	         --errors-for-leak-kinds=definite,indirect \
+	         --track-fds=yes --error-exitcode=42 \
+	         --log-file="$VGLOG" \
+	         "$FAMINE" >/dev/null 2>&1
+
+	def=$(awk '/definitely lost:/ { n=$4; gsub(/,/,"",n); print n+0; exit }' "$VGLOG"); def=${def:-0}
+	ind=$(awk '/indirectly lost:/ { n=$4; gsub(/,/,"",n); print n+0; exit }' "$VGLOG"); ind=${ind:-0}
+	errs=$(awk '/ERROR SUMMARY:/  { print $4+0; exit }' "$VGLOG"); errs=${errs:-0}
+	fds=$(awk '/FILE DESCRIPTORS:/ { print $4+0; exit }' "$VGLOG")
+
+	if [ "$def" -eq 0 ] && [ "$ind" -eq 0 ]; then
+		pass "no memory leaked (definite + indirect = 0 bytes)"
+	else fail "leak: $def bytes definite + $ind bytes indirect lost — see $VGLOG"; fi
+
+	if [ "$errs" -eq 0 ]; then pass "no memory errors on valid input (ERROR SUMMARY: 0)"
+	else fail "$errs valgrind error(s) on valid input — see $VGLOG"; fi
+
+	if [ -n "$fds" ]; then
+		if [ "$fds" -le 3 ]; then pass "no leaked file descriptors ($fds open at exit)"
+		else fail "$fds fds open at exit (expected 3: stdin/out/err) — see $VGLOG"; fi
+	fi
+
+	# guard against a false clean: confirm it actually infected under valgrind
+	if [ "$(sigcount "$T1/vg_pie")" = "1" ]; then pass "infection still works under valgrind"
+	else fail "clean valgrind but no infection — the run did nothing"; fi
 fi
 
 # ---------------------------------------------------------------------------
