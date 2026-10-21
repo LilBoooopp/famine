@@ -1,6 +1,6 @@
 #include "../include/famine.h"
 
-int is_valid_elf(const Elf64_Ehdr *elf)
+int is_valid_elf(const Elf64_Ehdr *elf, off_t size)
 {
 	if (memcmp(elf->e_ident, ELFMAG, SELFMAG) != 0)
 		return (LOG("not an ELF file\n"), 0);
@@ -10,6 +10,9 @@ int is_valid_elf(const Elf64_Ehdr *elf)
 		return (LOG("unsupported architecture (x86_64 only)\n"), 0);
 	if (elf->e_type != ET_EXEC && elf->e_type != ET_DYN)
 		return (LOG("not an executable or PIE\n"), 0);
+	const Elf64_Ehdr *eh = (const Elf64_Ehdr *)elf;
+	if (eh->e_phentsize != sizeof(Elf64_Phdr) || eh->e_phoff > (uint64_t)size || (uint64_t)eh->e_phnum * eh->e_phentsize > (uint64_t)size - eh->e_phoff)
+		return (LOG("program header table out of bounds\n"), 0);
 	return (1);
 }
 

