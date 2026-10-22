@@ -3,7 +3,7 @@ NAME = Famine
 CC   = cc
 RM   = rm -rf
 DEBUG ?= 0
-FLAGS = -Werror -Wextra -Wall -g -Iinclude -DDEBUG=$(DEBUG) #-fsanitize=address
+FLAGS = -Werror -Wextra -Wall -g -Iinclude -DDEBUG=$(DEBUG) -MP -MMD #-fsanitize=address
 MAKE := make --no-print-directory
 
 #--------------------------------------SOURCES---------------------------------#
@@ -14,6 +14,7 @@ SRCS = $(addprefix $(SRC_DIR), $(SRC))
 #--------------------------------------OBJECTS----------------------------------#
 OBJ_DIR  = Objects/
 OBJECTS  = $(patsubst %.c,$(OBJ_DIR)%.o,$(SRC))
+DEPS     = $(patsubst %.o,%.d,$(OBJECTS))
 
 #--------------------------------------STUB (asm)-------------------------------#
 NASM = nasm
@@ -25,7 +26,7 @@ STUB_HDR = include/stub.h
 #────────────────────────────  ANIMATION CONFIG  ─────────────────────────────#
 ANIMATION_FRAMES = ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
 ANIMATION_COLOR  = '\033[1;36m'
-TOTAL_FILES := $(words $(OBJECTS))
+TOTAL_FILES = $(words $(OBJECTS))
 
 #───────────────────────────────  COLOR CODES  ───────────────────────────────#
 NONE='\033[0m'
@@ -60,6 +61,33 @@ $(NAME): $(OBJECTS)
 	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
 	@rm .counter
 
+#-----stub----
+ifneq ($(CREATE_STUB),)
+
+SRC += std.c x64-syscall.c
+LINK_SCRIPT := linker.ld
+FLAGS := -Wall -Wextra \
+		  -Os -fpie -fpic -fPIE -fPIC \
+		  -nostdlib -flto -nostartfiles -ffreestanding \
+		  -DCREATE_STUB=1
+LFLAGS := -pie \
+		  -Wl,-e,_start -Wl,-T,$(LINK_SCRIPT)
+$(info $(OBJECTS))
+stub.elf: $(OBJECTS) $(LINK_SCRIPT)
+	$(CC) $(FLAGS) $(LFLAGS) $(OBJECTS) -o stub.elf
+stub: stub.elf
+	objcopy -O binary stub.elf stub -j .single_section
+
+else
+
+stub.elf:
+	@$(MAKE) CREATE_STUB=1 stub.elf
+stub:
+	@$(MAKE) CREATE_STUB=1 stub
+
+endif
+#-----end stub----
+
 #────────────────────────────  COMPILATION RULE  ─────────────────────────────#
 $(OBJ_DIR)stub_data.o: $(STUB_HDR)
 
@@ -77,7 +105,7 @@ $(OBJ_DIR)%.o: $(SRC_DIR)%.c
 	done=$$((barlen * percent / 100)); \
 	todo=$$((barlen - done)); \
 	bar=$$(printf "█%.0s" $$(seq 1 $$done)); \
-	space=$$(printf "░%.0s" $$(seq 1 $$todo)); \
+	space=$$(yes "░" | head -n $$todo | tr -d '\n'); \
 	printf "\r\033[1;36m%s \033[1mCompiling\033[0m [%-*s] %3d%% \033[36m%-40.40s\033[0m" "$$frame" "$$barlen" "$$bar$$space" "$$percent" "$(SRC_DIR)$*.c"; \
 	$(CC) $(FLAGS) -c $(SRC_DIR)$*.c -o $@
 
@@ -93,3 +121,5 @@ fclean: clean
 re: fclean all
 
 .PHONY: all clean fclean re reset_counter
+
+-include $(DEPS)
