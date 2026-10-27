@@ -2,7 +2,7 @@
 
 int is_valid_elf(const Elf64_Ehdr *elf, off_t size)
 {
-	if (memcmp(elf->e_ident, ELFMAG, SELFMAG) != 0)
+	if (my_memcmp(elf->e_ident, ELFMAG, SELFMAG) != 0)
 		return (LOG("not an ELF file\n"), 0);
 	if (elf->e_ident[EI_CLASS] != ELFCLASS64)
 		return (LOG("not a 64-bit ELF\n"), 0);

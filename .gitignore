@@ -51,6 +51,7 @@ vgcore.*
 
 .counter
 
+stub.elf
 stub.bin
 stub.h
 famine

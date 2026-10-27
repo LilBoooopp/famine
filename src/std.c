@@ -53,6 +53,10 @@ size_t sys_exit(int error_code) {
 	return syscall(SYS_exit, error_code);
 }
 
+size_t sys_getdents64(unsigned int fd, struct linux_dirent64 *dirents, unsigned int count) {
+	return syscall(SYS_getdents64, fd, (size_t)dirents, count);
+}
+
 
 
 
@@ -101,4 +105,34 @@ size_t my_strlen(char const *s) {
 		len++;
 	}
 	return len;
+}
+
+struct my_DIR *my_opendir(struct my_DIR *dir, const char *name) {
+	size_t fd = sys_open(name, O_RDONLY|O_DIRECTORY|O_CLOEXEC, 0);
+	if (sys_ret_is_err(fd))
+		return NULL;
+	dir->fd = fd;
+	dir->buf_pos = 0;
+	dir->buf_end = 0;
+	return dir;
+}
+
+struct linux_dirent64 *my_readdir64(struct my_DIR *dir) {
+	struct linux_dirent64 *de;
+
+	if (dir->buf_pos >= dir->buf_end) {
+		size_t len = sys_getdents64(dir->fd, (void*)dir->buf, sizeof(dir->buf));
+		if (len == 0 || sys_ret_is_err(len)) {
+			return NULL;
+		}
+		dir->buf_end = len;
+		dir->buf_pos = 0;
+	}
+	de = (void *)(dir->buf + dir->buf_pos);
+	dir->buf_pos += de->d_reclen;
+	return de;
+}
+
+void my_closedir(struct my_DIR *dir) {
+	sys_close(dir->fd);
 }

