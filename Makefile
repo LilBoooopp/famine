@@ -12,7 +12,7 @@ FLAGS += $(if $(DEBUG),-g) -Iinclude -DDEBUG=$(DEBUG) -MP -MMD
 ifneq ($(CREATE_STUB),)
 FLAGS += -ffreestanding -flto \
          -Os -fpie -fpic -fPIE -fPIC \
-         -DNOSTD=1 -nostdlib
+         -DNOSTD=1 -nostdlib -DCREATE_STUB=1
 endif
 
 LINK_SCRIPT = linker.ld

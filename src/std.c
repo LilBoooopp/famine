@@ -1,9 +1,13 @@
 #define _GNU_SOURCE
 
-#include "../include/m_syscall.h"
-#include "../include/m_std.h"
+#include <dirent.h>
 #include <syscall.h>
 #include <stddef.h>
+#include "../include/m_std.h"
+
+// #define NOSTD 1
+#if NOSTD
+#include "../include/m_syscall.h"
 
 bool sys_ret_is_err(size_t v) {
 	return (-4095UL <= v && v <= -1UL);
@@ -16,47 +20,59 @@ uint16_t sys_ret_errno(size_t v) {
 	return 0;
 }
 
-size_t sys_open(const char *filename, int flags, mode_t mode) {
-	return syscall(SYS_open, (size_t)filename, flags, mode);
+unsigned int my_errno = 0;
+
+static size_t sys_ret_set_errno(size_t ret) {
+	if (sys_ret_is_err(ret)) { \
+		errno = sys_ret_errno(ret);
+		return -1;
+	}
+	return ret;
 }
 
-size_t sys_fstatat(int dfd, const char *restrict filename, struct stat *restrict statbuf, int flag) {
-	return syscall(SYS_newfstatat, dfd, (size_t)filename, (size_t)statbuf, flag);
+#define syscall_errno(...) sys_ret_set_errno(syscall(__VA_ARGS__))
+
+int sys_open(const char *filename, int flags, mode_t mode) {
+	return syscall_errno(SYS_open, (size_t)filename, flags, mode);
 }
 
-size_t sys_fstat(int fd, struct stat *restrict statbuf) {
+int sys_fstatat(int dfd, const char *restrict filename, struct stat *restrict statbuf, int flag) {
+	return syscall_errno(SYS_newfstatat, dfd, (size_t)filename, (size_t)statbuf, flag);
+}
+
+int sys_fstat(int fd, struct stat *restrict statbuf) {
 	return sys_fstatat(fd, "", statbuf, AT_EMPTY_PATH);
 }
 
-size_t sys_lstat(const char *restrict path, struct stat *restrict buf) {
+int sys_lstat(const char *restrict path, struct stat *restrict buf) {
 	return sys_fstatat(AT_FDCWD, path, buf, AT_SYMLINK_NOFOLLOW);
 }
 
-size_t sys_close(unsigned int fd) {
-	return syscall(SYS_close, fd);
+int sys_close(int fd) {
+	return syscall_errno(SYS_close, fd);
 }
 
-size_t sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
+void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
 	// FIXME: Use mmap2 if available
-	return syscall(SYS_mmap, (size_t)addr, length, prot, flags, fd, offset);
+	return (void*)syscall_errno(SYS_mmap, (size_t)addr, length, prot, flags, fd, offset);
 }
 
-size_t sys_munmap(void *addr, size_t length) {
-	return syscall(SYS_munmap, (size_t)addr, length);
+int sys_munmap(void *addr, size_t length) {
+	return syscall_errno(SYS_munmap, (size_t)addr, length);
 }
 
-size_t sys_write(unsigned int fd, const char *buf, size_t count) {
-	return syscall(SYS_write, fd, (size_t)buf, count);
+ssize_t sys_write(unsigned int fd, const char *buf, size_t count) {
+	return syscall_errno(SYS_write, fd, (size_t)buf, count);
 }
 
-size_t sys_exit(int error_code) {
-	return syscall(SYS_exit, error_code);
+void sys_exit(int error_code) {
+	syscall(SYS_exit, error_code);
+	__builtin_unreachable();
 }
 
-size_t sys_getdents64(unsigned int fd, struct linux_dirent64 *dirents, unsigned int count) {
-	return syscall(SYS_getdents64, fd, (size_t)dirents, count);
+ssize_t sys_getdents64(unsigned int fd, struct linux_dirent64 *dirents, unsigned int count) {
+	return syscall_errno(SYS_getdents64, fd, (size_t)dirents, count);
 }
-
 
 
 
@@ -106,10 +122,11 @@ size_t my_strlen(char const *s) {
 	}
 	return len;
 }
+#endif
 
 struct my_DIR *my_opendir(struct my_DIR *dir, const char *name) {
-	size_t fd = sys_open(name, O_RDONLY|O_DIRECTORY|O_CLOEXEC, 0);
-	if (sys_ret_is_err(fd))
+	int fd = open(name, O_RDONLY|O_DIRECTORY|O_CLOEXEC, 0);
+	if (fd < 0)
 		return NULL;
 	dir->fd = fd;
 	dir->buf_pos = 0;
@@ -121,8 +138,8 @@ struct linux_dirent64 *my_readdir64(struct my_DIR *dir) {
 	struct linux_dirent64 *de;
 
 	if (dir->buf_pos >= dir->buf_end) {
-		size_t len = sys_getdents64(dir->fd, (void*)dir->buf, sizeof(dir->buf));
-		if (len == 0 || sys_ret_is_err(len)) {
+		size_t len = getdents64(dir->fd, (void*)dir->buf, sizeof(dir->buf));
+		if (len <= 0) {
 			return NULL;
 		}
 		dir->buf_end = len;
@@ -134,5 +151,5 @@ struct linux_dirent64 *my_readdir64(struct my_DIR *dir) {
 }
 
 void my_closedir(struct my_DIR *dir) {
-	sys_close(dir->fd);
+	close(dir->fd);
 }

