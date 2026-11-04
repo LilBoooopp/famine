@@ -3,29 +3,47 @@ NAME = Famine
 CC   = cc
 RM   = rm -rf
 DEBUG ?= 0
-FLAGS = -Werror -Wextra -Wall -g -Iinclude -DDEBUG=$(DEBUG) #-fsanitize=address
 MAKE := make --no-print-directory
+
+FLAGS = -Werror -Wextra -Wall
+FLAGS += $(if $(DEBUG),-g) -Iinclude -DDEBUG=$(DEBUG) -MP -MMD
+# FLAGS += -fsanitize=address
+
+ifneq ($(CREATE_STUB),)
+FLAGS += -ffreestanding -flto \
+         -Os -fpie -fpic -fPIE -fPIC \
+         -DNOSTD=1 -nostdlib -DCREATE_STUB=1
+endif
+
+LINK_SCRIPT = linker.ld
+
+LFLAGS =
+ifneq ($(CREATE_STUB),)
+LFLAGS += -pie -nostartfiles -Wl,-e,_start -ffreestanding -Wl,-T,$(LINK_SCRIPT)
+endif
 
 #--------------------------------------SOURCES---------------------------------#
 SRC_DIR = src/
-SRC = main.c elf.c inject.c infect.c stub_data.c walk.c
+SRC = main.c elf.c inject.c infect.c std.c stub_data.c walk.c x64-syscall.c
 SRCS = $(addprefix $(SRC_DIR), $(SRC))
 
 #--------------------------------------OBJECTS----------------------------------#
 OBJ_DIR  = Objects/
 OBJECTS  = $(patsubst %.c,$(OBJ_DIR)%.o,$(SRC))
+DEPS     = $(patsubst %.o,%.d,$(OBJECTS))
 
 #--------------------------------------STUB (asm)-------------------------------#
 NASM = nasm
 NASMFLAGS = -f bin -dDEBUG=$(DEBUG)
 STUB_ASM = $(SRC_DIR)stub.asm
+STUB_ELF = stub.elf
 STUB_BIN = stub.bin
 STUB_HDR = include/stub.h
 
 #────────────────────────────  ANIMATION CONFIG  ─────────────────────────────#
 ANIMATION_FRAMES = ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
 ANIMATION_COLOR  = '\033[1;36m'
-TOTAL_FILES := $(words $(OBJECTS))
+TOTAL_FILES = $(words $(OBJECTS))
 
 #───────────────────────────────  COLOR CODES  ───────────────────────────────#
 NONE='\033[0m'
@@ -42,8 +60,12 @@ BOLD='\033[1m'
 #────────────────────────────────  RULES  ─────────────────────────────────────#
 all: $(STUB_HDR) reset_counter $(OBJ_DIR) $(NAME)
 
-$(STUB_HDR): $(STUB_ASM)
+ifeq ($(CREATE_STUB),)
+$(STUB_BIN): $(STUB_ASM)
 	@$(NASM) $(NASMFLAGS) $(STUB_ASM) -o $(STUB_BIN)
+endif
+
+$(STUB_HDR): $(STUB_BIN)
 	@xxd -i $(STUB_BIN) > $(STUB_HDR)
 	@printf $(BOLD)$(MAGENTA)"Stub assembled -> $(STUB_HDR)\n"$(NONE)
 
@@ -55,10 +77,30 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 	@printf $(BOLD)$(MAGENTA)"Objects directory created\n"$(NONE)
 
-$(NAME): $(OBJECTS)
+$(NAME): $(OBJECTS) $(LINK_SCRIPT)
 	@$(CC) $(FLAGS) $(OBJECTS) -o $(NAME)
 	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
 	@rm .counter
+
+#-----stub----
+ifneq ($(CREATE_STUB),)
+
+$(STUB_ELF): $(OBJECTS) $(LINK_SCRIPT)
+	$(CC) $(FLAGS) $(LFLAGS) $(OBJECTS) -o $@
+$(STUB_BIN): $(STUB_ELF)
+	objcopy -O binary $(STUB_ELF) $@ -j .single_section
+
+else
+
+$(STUB_ELF):
+	@$(MAKE) CREATE_STUB=1 $(STUB_ELF)
+# $(STUB_BIN):
+# 	@$(MAKE) CREATE_STUB=1 $(STUB_BIN)
+# $(STUB_HDR):
+# 	@$(MAKE) CREATE_STUB=1 $(STUB_HDR)
+
+endif
+#-----end stub----
 
 #────────────────────────────  COMPILATION RULE  ─────────────────────────────#
 $(OBJ_DIR)stub_data.o: $(STUB_HDR)
@@ -77,7 +119,7 @@ $(OBJ_DIR)%.o: $(SRC_DIR)%.c
 	done=$$((barlen * percent / 100)); \
 	todo=$$((barlen - done)); \
 	bar=$$(printf "█%.0s" $$(seq 1 $$done)); \
-	space=$$(printf "░%.0s" $$(seq 1 $$todo)); \
+	space=$$(yes "░" | head -n $$todo | tr -d '\n'); \
 	printf "\r\033[1;36m%s \033[1mCompiling\033[0m [%-*s] %3d%% \033[36m%-40.40s\033[0m" "$$frame" "$$barlen" "$$bar$$space" "$$percent" "$(SRC_DIR)$*.c"; \
 	$(CC) $(FLAGS) -c $(SRC_DIR)$*.c -o $@
 
@@ -88,8 +130,10 @@ clean:
 
 fclean: clean
 	@printf $(CURSIVE)$(GRAY)" -> Removing $(NAME)\n"$(NONE)
-	@$(RM) $(NAME) $(STUB_BIN) $(STUB_HDR)
+	@$(RM) $(NAME) $(STUB_BIN) $(STUB_ELF) $(STUB_HDR)
 
 re: fclean all
 
 .PHONY: all clean fclean re reset_counter
+
+-include $(DEPS)

