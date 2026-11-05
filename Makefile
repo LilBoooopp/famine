@@ -1,139 +1,129 @@
 #───────────────────────────  PROJECT BASICS  ────────────────────────────────#
-NAME = Famine
-CC   = cc
-RM   = rm -rf
+NAME := Famine
 DEBUG ?= 0
-MAKE := make --no-print-directory
+XXD := xxd
+OBJCOPY := objcopy
 
-FLAGS = -Werror -Wextra -Wall
-FLAGS += $(if $(DEBUG),-g) -Iinclude -DDEBUG=$(DEBUG) -MP -MMD
-# FLAGS += -fsanitize=address
+CFLAGS := -Wall -Wextra -Werror -Iinclude -MP -MMD -DDEBUG=$(DEBUG) $(if $(DEBUG),-g)
+LFLAGS :=
 
-ifneq ($(CREATE_STUB),)
-FLAGS += -ffreestanding -flto \
-         -Os -fpie -fpic -fPIE -fPIC \
-         -DNOSTD=1 -nostdlib -DCREATE_STUB=1
-endif
+LINK_SCRIPT := linker.ld
 
-LINK_SCRIPT = linker.ld
+STUB_CFLAGS := $(CFLAGS) -ffreestanding -flto -Os -fpie -fpic -fPIE -fPIC -DNOSTD=1 -nostdlib -DCREATE_STUB=1
+STUB_LFLAGS := $(LFLAGS) -pie -nostartfiles -Wl,-e,_start -ffreestanding -Wl,-T,$(LINK_SCRIPT) -Wl,--build-id=none
 
-LFLAGS =
-ifneq ($(CREATE_STUB),)
-LFLAGS += -pie -nostartfiles -Wl,-e,_start -ffreestanding -Wl,-T,$(LINK_SCRIPT)
-endif
+STUB_ELF := stub.elf
+STUB_HDR := include/stub.h
+STUB_BIN := stub.bin
 
-#--------------------------------------SOURCES---------------------------------#
-SRC_DIR = src/
-SRC = main.c elf.c inject.c infect.c std.c stub_data.c walk.c x64-syscall.c
-SRCS = $(addprefix $(SRC_DIR), $(SRC))
+#--------------------------------------SOURCES--------------------------------#
+SRC_DIR := src
+SHARED_SRC := main.c elf.c inject.c infect.c std.c walk.c x64-syscall.c
+EXE_SRC := $(SHARED_SRC) stub_data.c
+STUB_SRC := $(SHARED_SRC)
 
-#--------------------------------------OBJECTS----------------------------------#
-OBJ_DIR  = Objects/
-OBJECTS  = $(patsubst %.c,$(OBJ_DIR)%.o,$(SRC))
-DEPS     = $(patsubst %.o,%.d,$(OBJECTS))
 
-#--------------------------------------STUB (asm)-------------------------------#
-NASM = nasm
-NASMFLAGS = -f bin -dDEBUG=$(DEBUG)
-STUB_ASM = $(SRC_DIR)stub.asm
-STUB_ELF = stub.elf
-STUB_BIN = stub.bin
-STUB_HDR = include/stub.h
+#--------------------------------------OBJECTS--------------------------------#
+OBJ_DIR := Objects
+EXE_OBJ_DIR := $(OBJ_DIR)/$(NAME)
+STUB_OBJ_DIR := $(OBJ_DIR)/stub
+EXE_OBJ := $(patsubst %.c,$(EXE_OBJ_DIR)/%.o,$(EXE_SRC))
+STUB_OBJ := $(patsubst %.c,$(STUB_OBJ_DIR)/%.o,$(STUB_SRC))
+
+EXE_DEP := $(EXE_OBJ:%.o=%.d)
+STUB_DEP := $(STUB_OBJ:%.o=%.d)
+
 
 #────────────────────────────  ANIMATION CONFIG  ─────────────────────────────#
-ANIMATION_FRAMES = ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
-ANIMATION_COLOR  = '\033[1;36m'
-TOTAL_FILES = $(words $(OBJECTS))
+ANIMATION_FRAMES := ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+ANIMATION_COLOR := '\033[1;36m'
+ALL_FILES := $(EXE_OBJ) $(STUB_OBJ)
+TOTAL_FILES := $(words $(ALL_FILES))
+BAR_LEN := 30
+ifeq ($(CALC_UPDATE),1)
+NEED_UPDATE := 0
+else
+NEED_UPDATE := $(foreach f, $(ALL_FILES), $(shell $(MAKE) CALC_UPDATE=1 -f enhanced.mk --no-print-directory -q $(f); echo $$?))
+endif
+NEED_UPDATE := $(shell echo $(NEED_UPDATE) | tr ' ' '+' | bc)
 
 #───────────────────────────────  COLOR CODES  ───────────────────────────────#
-NONE='\033[0m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-GRAY='\033[2;37m'
-CURSIVE='\033[3m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-CYAN='\033[36m'
-WHITE='\033[37m'
-BOLD='\033[1m'
+NONE := '\033[0m'
+GREEN := '\033[32m'
+YELLOW := '\033[33m'
+GRAY := '\033[2;37m'
+CURSIVE := '\033[3m'
+BLUE := '\033[34m'
+MAGENTA := '\033[35m'
+CYAN := '\033[36m'
+WHITE := '\033[37m'
+BOLD := '\033[1m'
 
-#────────────────────────────────  RULES  ─────────────────────────────────────#
-all: $(STUB_HDR) reset_counter $(OBJ_DIR) $(NAME)
+#────────────────────────────────  RULES  ────────────────────────────────────#
+$(NAME): $(EXE_OBJ)
+	@$(CC) $(CFLAGS) $(LFLAGS) $(EXE_OBJ) -o $@
+	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
 
-ifeq ($(CREATE_STUB),)
-$(STUB_BIN): $(STUB_ASM)
-	@$(NASM) $(NASMFLAGS) $(STUB_ASM) -o $(STUB_BIN)
-endif
+.PHONY: all
+all: $(NAME)
+
+$(STUB_ELF): $(STUB_OBJ) $(LINK_SCRIPT)
+	@$(CC) $(STUB_CFLAGS) $(STUB_LFLAGS) $(STUB_OBJ) -o $@
+
+$(STUB_BIN): $(STUB_ELF)
+	@$(OBJCOPY) -O binary $(STUB_ELF) $@ -j .single_section
 
 $(STUB_HDR): $(STUB_BIN)
-	@xxd -i $(STUB_BIN) > $(STUB_HDR)
-	@printf $(BOLD)$(MAGENTA)"Stub assembled -> $(STUB_HDR)\n"$(NONE)
+	@$(XXD) -i $(STUB_BIN) > $@
+	@printf "\r\033[K"$(BOLD)$(MAGENTA)"Stub assembled -> $(STUB_HDR)\n"$(NONE)
 
+$(EXE_OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(call comp_unit,$< -> $@)
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+$(EXE_OBJ_DIR)/stub_data.o: $(STUB_HDR)
+
+$(STUB_OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(call comp_unit,$< -> $@)
+	@$(CC) $(STUB_CFLAGS) -c $< -o $@
+
+.PHONY: clean
+clean: reset_counter
+	@printf $(CURSIVE)$(GRAY)" -> Cleaning object files..\n"$(NONE)
+	@$(RM) -r $(OBJ_DIR) $(STUB_ELF) $(STUB_BIN)
+
+.PHONY: fclean
+fclean: clean
+	@printf $(CURSIVE)$(GRAY)" -> Removing $(NAME)\n"$(NONE)
+	@$(RM) $(NAME)
+
+.PHONY: re
+re: fclean reset_counter all
+
+-include $(EXE_DEP) $(STUB_DEP)
+
+.PHONY: reset_counter
 reset_counter:
-	@rm -f .counter
-	@printf "0" > .counter
+	$(eval NEED_UPDATE := $(TOTAL_FILES))
 
-$(OBJ_DIR):
-	@mkdir -p $(OBJ_DIR)
-	@printf $(BOLD)$(MAGENTA)"Objects directory created\n"$(NONE)
-
-$(NAME): $(OBJECTS) $(LINK_SCRIPT)
-	@$(CC) $(FLAGS) $(OBJECTS) -o $(NAME)
-	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
-	@rm .counter
-
-#-----stub----
-ifneq ($(CREATE_STUB),)
-
-$(STUB_ELF): $(OBJECTS) $(LINK_SCRIPT)
-	$(CC) $(FLAGS) $(LFLAGS) $(OBJECTS) -o $@
-$(STUB_BIN): $(STUB_ELF)
-	objcopy -O binary $(STUB_ELF) $@ -j .single_section
-
-else
-
-$(STUB_ELF):
-	@$(MAKE) CREATE_STUB=1 $(STUB_ELF)
-# $(STUB_BIN):
-# 	@$(MAKE) CREATE_STUB=1 $(STUB_BIN)
-# $(STUB_HDR):
-# 	@$(MAKE) CREATE_STUB=1 $(STUB_HDR)
-
-endif
-#-----end stub----
-
-#────────────────────────────  COMPILATION RULE  ─────────────────────────────#
-$(OBJ_DIR)stub_data.o: $(STUB_HDR)
-
-$(OBJ_DIR)%.o: $(SRC_DIR)%.c
-	@mkdir -p $(OBJ_DIR)
-	@if [ ! -f .counter ]; then printf "0" > .counter; fi
-	@file_count=$$(cat .counter); \
-	file_count=$$((file_count + 1)); \
-	printf $$file_count > .counter; \
+define comp_unit
+	$(eval NEED_UPDATE := $(shell echo $$(($(NEED_UPDATE) - 1))))
+	file_count="$$(($(TOTAL_FILES) - $(NEED_UPDATE)))"; \
 	frames="⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"; \
 	frame_index=$$((file_count % 10)); \
 	frame=$$(printf $$frames | cut -d ' ' -f $$((frame_index + 1))); \
 	percent=$$((100 * file_count / $(TOTAL_FILES))); \
-	barlen=30; \
+	barlen=$(BAR_LEN); \
 	done=$$((barlen * percent / 100)); \
-	todo=$$((barlen - done)); \
 	bar=$$(printf "█%.0s" $$(seq 1 $$done)); \
+	todo=$$((barlen - done)); \
 	space=$$(yes "░" | head -n $$todo | tr -d '\n'); \
-	printf "\r\033[1;36m%s \033[1mCompiling\033[0m [%-*s] %3d%% \033[36m%-40.40s\033[0m" "$$frame" "$$barlen" "$$bar$$space" "$$percent" "$(SRC_DIR)$*.c"; \
-	$(CC) $(FLAGS) -c $(SRC_DIR)$*.c -o $@
+	printf "\r\033[1;36m%s \033[1mCompiling\033[0m [%-*s] %3d%% \033[36m%-80.80s\033[0m" "$$frame" "$$barlen" "$$bar$$space" "$$percent" "$(1)"
+endef
 
-clean:
-	@printf $(CURSIVE)$(GRAY)" -> Cleaning object files..\n"$(NONE)
-	@$(RM) $(OBJ_DIR)
-	@$(RM) .counter
-
-fclean: clean
-	@printf $(CURSIVE)$(GRAY)" -> Removing $(NAME)\n"$(NONE)
-	@$(RM) $(NAME) $(STUB_BIN) $(STUB_ELF) $(STUB_HDR)
-
-re: fclean all
-
-.PHONY: all clean fclean re reset_counter
-
--include $(DEPS)
+ifeq ($(CALC_UPDATE),1)
+override define comp_unit
+endef
+endif
