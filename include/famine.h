@@ -64,7 +64,6 @@ typedef struct s_famine
 }	t_famine;
 
 typedef struct placeholders {
-	size_t placeholders;
 	size_t entry;
 	size_t phdr;
 	size_t stub_len;
