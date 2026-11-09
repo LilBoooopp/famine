@@ -9,7 +9,7 @@ LFLAGS :=
 
 LINK_SCRIPT := linker.ld
 
-STUB_CFLAGS := $(CFLAGS) -ffreestanding -flto -Os -fpie -fpic -fPIE -fPIC -DNOSTD=1 -nostdlib -DCREATE_STUB=1
+STUB_CFLAGS := $(CFLAGS) -ffreestanding -flto -Os -DNOSTD=1 -nostdlib -DCREATE_STUB=1 -fno-stack-protector
 STUB_LFLAGS := $(LFLAGS) -pie -nostartfiles -Wl,-e,_start -ffreestanding -Wl,-T,$(LINK_SCRIPT) -Wl,--build-id=none
 
 STUB_ELF := stub.elf
@@ -43,7 +43,7 @@ BAR_LEN := 30
 ifeq ($(CALC_UPDATE),1)
 NEED_UPDATE := 0
 else
-NEED_UPDATE := $(foreach f, $(ALL_FILES), $(shell $(MAKE) CALC_UPDATE=1 -f enhanced.mk --no-print-directory -q $(f); echo $$?))
+NEED_UPDATE := $(foreach f, $(ALL_FILES), $(shell $(MAKE) CALC_UPDATE=1 --no-print-directory -q $(f); echo $$?))
 endif
 NEED_UPDATE := $(shell echo $(NEED_UPDATE) | tr ' ' '+' | bc)
 
@@ -92,7 +92,7 @@ $(STUB_OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 .PHONY: clean
 clean: reset_counter
 	@printf $(CURSIVE)$(GRAY)" -> Cleaning object files..\n"$(NONE)
-	@$(RM) -r $(OBJ_DIR) $(STUB_ELF) $(STUB_BIN)
+	@$(RM) -r $(OBJ_DIR) $(STUB_ELF) $(STUB_BIN) $(STUB_HDR)
 
 .PHONY: fclean
 fclean: clean

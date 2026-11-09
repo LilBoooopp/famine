@@ -9,7 +9,7 @@ void	inject_stub(t_famine *f, const unsigned char *stub, size_t stub_len, size_t
 {
 	memcpy(f->out + f->stub_offset, stub, stub_len);
 
-	struct placeholders *placeholders = f->out + f->stub_offset+ placeholders_offset;
+	struct placeholders *placeholders = f->out + f->stub_offset + placeholders_offset;
 	placeholders->entry = f->ehdr->e_entry;
 	placeholders->phdr = f->phdr_vaddr;
 #if CREATE_STUB
