@@ -38,9 +38,7 @@ int main(void) {
 #else
 
 t_args parse_args(int argc, char **argv) {
-	t_args args;
-
-	memset(&args, 0, sizeof(t_args));
+	t_args args = {0};
 	args.recursive = 0;
 	for (int i = 1; i < argc; i++)
 	{
