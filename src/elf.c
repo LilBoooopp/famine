@@ -10,8 +10,7 @@ int is_valid_elf(const Elf64_Ehdr *elf, off_t size)
 		return (LOG("unsupported architecture (x86_64 only)\n"), 0);
 	if (elf->e_type != ET_EXEC && elf->e_type != ET_DYN)
 		return (LOG("not an executable or PIE\n"), 0);
-	const Elf64_Ehdr *eh = (const Elf64_Ehdr *)elf;
-	if (eh->e_phentsize != sizeof(Elf64_Phdr) || eh->e_phoff > (uint64_t)size || (uint64_t)eh->e_phnum * eh->e_phentsize > (uint64_t)size - eh->e_phoff)
+	if (elf->e_phentsize != sizeof(Elf64_Phdr) || elf->e_phoff > (uint64_t)size || (uint64_t)elf->e_phnum * elf->e_phentsize > (uint64_t)size - elf->e_phoff)
 		return (LOG("program header table out of bounds\n"), 0);
 	return (1);
 }

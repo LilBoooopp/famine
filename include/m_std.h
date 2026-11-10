@@ -12,8 +12,8 @@ bool sys_ret_is_err(size_t v);
 uint16_t sys_ret_errno(size_t v);
 
 struct linux_dirent64 {
-    unsigned long  d_ino;
-    unsigned long  d_off;
+    uint64_t  d_ino;
+    uint64_t  d_off;
     unsigned short d_reclen;
     unsigned char  d_type;
     char           d_name[];

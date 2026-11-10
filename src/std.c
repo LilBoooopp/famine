@@ -86,7 +86,7 @@ int my_memcmp(const void *s1, const void *s2, size_t n) {
 
 void *my_memset(void *s, int c, size_t n) {
 	for (size_t i = 0; i < n; i++) {
-		((unsigned char*)s)[n] = c;
+		((unsigned char*)s)[i] = c;
 	}
 	return s;
 }
@@ -101,7 +101,7 @@ void *my_memcpy(void *restrict dest, const void *restrict src, size_t n) {
 void *my_memmem(const void *restrict haystack, size_t haystacklen, const void *restrict needle, size_t needlelen) {
 	if (haystacklen < needlelen) return NULL;
 	if (needlelen == 0) return (void*)haystack;
-	for (size_t i = 0; i < haystacklen - needlelen; i++) {
+	for (size_t i = 0; i <= haystacklen - needlelen; i++) {
 		size_t j;
 		for (j = 0; j < needlelen; j++) {
 			if (((unsigned char const *)haystack)[i + j] != ((unsigned char *)needle)[j]) {
