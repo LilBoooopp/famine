@@ -51,11 +51,6 @@ extern unsigned char	stub_bin[];
 extern unsigned int		stub_bin_len;
 #endif
 
-typedef struct s_args
-{
-	bool recursive;
-} t_args;
-
 typedef struct s_famine
 {
 	void	*out; // writable output image

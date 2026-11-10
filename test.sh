@@ -579,22 +579,29 @@ if [ "$REC_OK" = 1 ]; then pass "re-running -r is a no-op on already-signed targ
 else fail "an already-signed target was re-infected on a second -r run"; fi
 
 # ---------------------------------------------------------------------------
-#  15. -r with NO targets — must fall through to nothing.
-#      Crucially must NOT fall back to the default /tmp/test* dirs.
+#  15. -r with NO targets — infects defaults RECURSIVELY.
+#      No explicit targets means /tmp/test + /tmp/test2, but -r still applies.
 # ---------------------------------------------------------------------------
-section "-r with no targets (falls through to nothing)"
-rm -rf "$T1" "$T2" "$AT"; mkdir -p "$T1" "$T2"
-cp "$(command -v ls)" "$T1/rflag_canary1"
-cp "$(command -v ls)" "$T2/rflag_canary2"
-C1=$(md5 "$T1/rflag_canary1"); C2=$(md5 "$T2/rflag_canary2")
+section "-r with no targets (defaults, recursive)"
+rm -rf "$T1" "$T2" "$AT"; mkdir -p "$T1/sub" "$T2"
+cp "$(command -v ls)" "$T1/rflag_top"
+cp "$(command -v ls)" "$T1/sub/rflag_nested"
+cp "$(command -v ls)" "$T2/rflag_t2"
+RTOP=$(md5 "$T1/rflag_top"); RNEST=$(md5 "$T1/sub/rflag_nested"); RT2=$(md5 "$T2/rflag_t2")
 
 "$FAMINE" -r >"$WORK/outn" 2>"$WORK/errn"; RCN=$?
 eq "-r-only run exit 0" "0" "$RCN"
 [ "$RCN" -ge 128 ] && fail "crashed on -r with no targets (signal $((RCN-128)))"
 eq "-r-only run silent" "0" "$(( $(wc -c < "$WORK/outn") + $(wc -c < "$WORK/errn") ))"
-if [ "$(md5 "$T1/rflag_canary1")" = "$C1" ] && [ "$(md5 "$T2/rflag_canary2")" = "$C2" ]; then
-	pass "-r with no targets infects nothing (no fallback to default dirs)"
-else fail "-r with no targets touched the default dirs"; fi
+if [ "$(sigcount "$T1/rflag_top")" = "1" ] && [ "$(md5 "$T1/rflag_top")" != "$RTOP" ]; then
+	pass "-r infects /tmp/test top-level"
+else fail "-r did not infect /tmp/test top-level"; fi
+if [ "$(sigcount "$T1/sub/rflag_nested")" = "1" ] && [ "$(md5 "$T1/sub/rflag_nested")" != "$RNEST" ]; then
+	pass "-r recurses into /tmp/test subdirectories"
+else fail "-r did not recurse into /tmp/test subdirectories"; fi
+if [ "$(sigcount "$T2/rflag_t2")" = "1" ] && [ "$(md5 "$T2/rflag_t2")" != "$RT2" ]; then
+	pass "-r infects /tmp/test2"
+else fail "-r did not infect /tmp/test2"; fi
 
 # ---------------------------------------------------------------------------
 #  16. no-args default run is NON-recursive.
