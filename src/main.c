@@ -141,11 +141,16 @@ void _start() {
 	// callee-saved RBX, RSP, RBP, and R12–R15
 	asm volatile(
 		"movq %%rdx, %%rbx\n" // save rtld_fini
-		"movq %%rsp, %%rdi\n" // pass address of rsp to my_start
+		"movq %%rsp, %%r12\n" // save rsp
+		"andq $0xfffffffffffffff0, %%rsp\n" // align stack on 16 bytes
 		"subq $8, %%rsp\n" // reserve space for load_base
 		"movq %%rsp, %%rsi\n" // pass address to load_base
+		"movq %%r12, %%rdi\n" // pass initial address of rsp to my_start
+		"subq $8, %%rsp\n" // 16 byte align rsp for function call
 		"call my_start\n"
+		"addq $8, %%rsp\n" // undo align
 		"popq %%rbp\n" // rbp = load_base
+		"movq %%r12, %%rsp\n" // restore rsp
 		"movq %%rbx, %%rdx\n" // restore rtld_fini
 		"jmpq *%%rax\n"
 		:
@@ -155,4 +160,4 @@ void _start() {
 #else
 #error just use libc if youre not going to create a stub
 #endif // CREATE_STUB
-#endif // NOST
+#endif // NOSTD
