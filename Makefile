@@ -1,4 +1,5 @@
 #───────────────────────────  PROJECT BASICS  ────────────────────────────────#
+CC := clang
 NAME := Famine
 DEBUG ?= 0
 XXD := xxd
